@@ -6,4 +6,4 @@
 
 ## Prototype: http://tiarkrompf.github.io/notes/?/graph-ir/
 
-## Mechanized proof is coming soon.
+## Coq mechanization: [here](coq).

@@ -1,0 +1,10 @@
+CoqMakefile*
+.CoqMakeFile.d
+.vscode
+*.vo
+*.vok
+*.vos
+*.glob
+*.aux
+.DS_Store
+.lia.cache

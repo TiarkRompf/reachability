@@ -1417,7 +1417,7 @@ Proof. intros Γ1 Γ2 Σ T1 d1 T2 d2  Hstp T'. remember (Γ1 ++ Γ2)  as Γ. gen
 Qed.
 
 Lemma weaken_stp : forall {Γ Σ T1 d1 T2 d2}, stp Γ Σ T1 d1 T2 d2 -> forall T', stp (T' :: Γ) Σ T1 d1 T2 d2.
-Proof. 
+Proof.
   intros Γ Σ T1 d1 T2 d2 HST. specialize (@weaken_stp_gen [] Γ Σ T1 d1 T2 d2) as Hsp. simpl in *.  specialize (Hsp HST).
   intros.  specialize (Hsp T'). apply stp_closed in HST. intuition. replace (splice_ty (length Γ) T1) with T1 in Hsp.
   replace (splice_ty (length Γ) T2) with T2 in Hsp.

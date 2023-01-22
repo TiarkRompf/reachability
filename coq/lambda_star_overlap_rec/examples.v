@@ -336,7 +336,7 @@ Section FunAbs.
       apply t_abs; ccrush.
       replace (∅) with (openq ∅ ∅ ##1); try solve [opening;ccrush].
       eapply t_val; ccrush.
-      * eapply t_ref; ccrush. 
+      * eapply t_ref; ccrush.
         eapply t_var; ccrush.
       * apply t_seq with (T1:=TUnit) (q1:=∅); ccrush.
       - apply t_deref with (d:=$$4).
@@ -395,7 +395,7 @@ Section Escaping.
     subst y.
     apply t_abs; ccrush.
     apply t_deref with ($$(length Γ)); ccrush.
-    T_VAR; ccrush.  
+    T_VAR; ccrush.
   Qed.
 
   (** When escaping the lexical scope, the type of the closure
@@ -808,25 +808,26 @@ End HigherOrder.
 (** Lightweight Reachability Polymorphism (Sec. 3.4) *)
 Section LightweightPoly.
 
-  (** Since this version of the calculus lacks numbers and reference assignment, we
+  (** Since this version of the calculus lacks numbers, we
       demonstrate reachability polymorphism on an equivalent example:
 
-          def inclike(x) = { !x; x }
+          def inclike(x) = { x := !x; x }
    *)
-  Example inclike := (tabs (seq !(#1) #1)).
-  (** inclike : ((x : Ref[Unit])^∅) => Ref[Unit]^{x })^∅ *)
+  Example inclike := (tabs (seq (tassign (#1) !(#1)) #1)).
+  (** inclike : ((x : Ref[Unit])^∅) => Ref[Unit]^{x})^∅ *)
   Example inclike_ty : forall Γ φ Σ,
       closed_qual 0 (length Γ) (length Σ) φ ->
       has_type Γ φ Σ inclike ({TRef TUnit | ∅} ==> {TRef TUnit | ##1}) ∅.
     intros. unfold inclike.
     apply t_abs; ccrush.
     eapply t_seq with (q1:=∅); ccrush.
-    * eapply t_deref.
+    * eapply t_assign.
       T_VAR; ccrush.
+      eapply t_deref. T_VAR; ccrush.
     * T_VAR; ccrush.
   Qed.
 
-  (** Γ := a : Ref[Unit]^{a };  b : Ref[Unit]^{b} ; c1 : Ref[Unit]^{a,b,c1} ; c2 : Ref[Unit]^{a,b,c1,c2} *)
+  (** Γ := a : Ref[Unit]^{a} ; b : Ref[Unit]^{b} ; c1 : Ref[Unit]^{a,b,c1} ; c2 : Ref[Unit]^{a,b,c1,c2} *)
   Context (a := 0) (b := 1) (c1 := 2) (c2 := 3)
           (Γ := [(TRef TUnit, ($$a ⊔ $$b ⊔ $$c1)) ;
                  (TRef TUnit, ($$a ⊔ $$b)) ;

@@ -1853,7 +1853,8 @@ Qed.
 
 Lemma narrowing_saturated : forall {Γ1 U du Γ2 Σ q},
     saturated (Γ1 ++ (U,du) :: Γ2) Σ q ->
-    forall {V dv}, stp Γ2 Σ V dv U du -> saturated (Γ1 ++ (V,dv) :: Γ2) Σ q.
+    forall {V dv}, stp Γ2 Σ V dv U du ->
+    saturated (Γ1 ++ (V,dv) :: Γ2) Σ q.
   intros. unfold saturated. intros.
   specialize (H x H1). inversion H. destruct (PeanoNat.Nat.lt_trichotomy x (length Γ2)) as [Hlen | [Hlen | Hlen] ].
   - apply (sat_var U0 q'); auto. rewrite indexr_skips in H2; simpl; auto.
@@ -2903,7 +2904,7 @@ Proof.
       apply has_type_vtp in H0 as VH0; intuition.
       exists (open_tm  t2 t0). exists σ. intuition.
       * constructor. intuition.
-      * apply (Preserve Σ ∅); auto.  rewrite qqplus_qbot_right_neutral.
+      * apply (Preserve Σ ∅); auto. rewrite qqplus_qbot_right_neutral.
         apply qstp_closed in H32 as H32'; intuition.
         change (length []) with 0 in *. subst.
         assert (HT' : has_type [(T1, df ⋒ d1)] (df ⋓ just_fv 0) Σ (open_tm' ([]:tenv) t0) (open_ty' ([]:tenv) T2) (openq' ([]:tenv) d3)). {

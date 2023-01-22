@@ -1444,7 +1444,7 @@ Proof. intros Γ1 Γ2 Σ T1 d1 T2 d2  Hstp T'. remember (Γ1 ++ Γ2)  as Γ. gen
 Qed.
 
 Lemma weaken_stp : forall {Γ Σ T1 d1 T2 d2}, stp Γ Σ T1 d1 T2 d2 -> forall T', stp (T' :: Γ) Σ T1 d1 T2 d2.
-Proof. 
+Proof.
   intros Γ Σ T1 d1 T2 d2 HST. specialize (@weaken_stp_gen [] Γ Σ T1 d1 T2 d2) as Hsp. simpl in *.  specialize (Hsp HST).
   intros.  specialize (Hsp T'). apply stp_closed in HST. intuition. replace (splice_ty (length Γ) T1) with T1 in Hsp.
   replace (splice_ty (length Γ) T2) with T2 in Hsp.
@@ -3006,7 +3006,7 @@ Qed.
 
 Lemma vtp_canonical_form_lam : forall {Σ t T1 T2 d1 d2 df},
     vtp Σ t (TFun d1 d2 T1 T2) df -> value t -> exists (t' : tm), t = tabs t'.
-Proof. 
+Proof.
   intros Σ t T1 T2 d1 d2 df H. remember (TFun d1 d2 T1 T2) as T.
   generalize dependent d1. generalize dependent d2. generalize dependent T1. generalize dependent T2.
   induction H; intuition; try discriminate; inversion H0; subst. exists t0. intuition.

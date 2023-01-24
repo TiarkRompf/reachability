@@ -27,8 +27,8 @@ Local Open Scope qualifiers.
 
 (* ### Examples ### *)
 
-Notation " { a | b } ==> { c | d }"  := (TFun b d a c) 
-(at level 10, format "'[' '[hv' '{' a  '/' '|'  b '}' ']' '/  '  '==>'  '[hv' '{' c  '/' '|'  d '}' ']' ']'"). 
+Notation " { a | b } ==> { c | d }"  := (TFun b d a c)
+(at level 10, format "'[' '[hv' '{' a  '/' '|'  b '}' ']' '/  '  '==>'  '[hv' '{' c  '/' '|'  d '}' ']' ']'").
 
 Section Warmup.
 
@@ -44,9 +44,9 @@ Section Warmup.
   Example idfun_typing : forall T1 Σ,
       closed_ty 0 3 (length Σ) T1 ->
       has_type Γ012 φ012 Σ idfun ({T1 | ∅} ==> {T1 | ##0}) ∅.
-    intros. unfold φ012. unfold Γ012. unfold idfun. compute.     
+    intros. unfold φ012. unfold Γ012. unfold idfun. compute.
     apply t_abs; ccrush.
-    eapply t_var; ccrush.     
+    eapply t_var; ccrush.
   Qed.
 
   (** Γ|Σ ⊢ᵠ⁰¹² λx.x : ((a : A^{}) -> A^a)^d1 *)
@@ -54,23 +54,23 @@ Section Warmup.
       closed_qual 0 (length Γ) (length Σ) φ ->
       closed_qual 0 (length Γ) (length Σ) d1 ->
       closed_ty 0 (length Γ) (length Σ) A ->
-      d1 ⊑ φ ->      
+      d1 ⊑ φ ->
       has_type Γ φ Σ idfun ({A | ∅} ==> {A | ##0}) d1.
-    intros. unfold idfun. compute.    
+    intros. unfold idfun. compute.
     apply t_abs; ccrush.
-    eapply t_var; ccrush.    
-  Qed.    
+    eapply t_var; ccrush.
+  Qed.
 
   (** Γ012|Σ ⊢ᵠ⁰¹² λx.x : ((x : A^a,b) -> A^a,b+x)^∅ cannot be typed this way. A function's qualifier should contain all its free variables and
-    their qualifiers.  *)    
-  Example idfun_nt : 
+    their qualifiers.  *)
+  Example idfun_nt :
     let q := $$0 ⊔ $$1 in
       forall Σ A, has_type Γ012 φ012 Σ idfun ({A | q} ==> {A | q ⊔ ##0}) ∅.
     intros. subst q. unfold idfun.
-    apply t_abs; ccrush. 
+    apply t_abs; ccrush.
     2 : { eapply t_sub with (d1:= $$3). eapply t_var. ccrush.
-          6 : { simpl. intuition. admit. (* contradiction: {0,1,3} ⊈ {3} *)  }    
-  Abort.              
+          6 : { simpl. intuition. admit. (* contradiction: {0,1,3} ⊈ {3} *)  }
+  Abort.
 
   (** Church encodings *)
   Section Church.
@@ -84,11 +84,11 @@ Section Warmup.
     Example church_false_T A B := {A | ∅} ==> {{B | ∅} ==> {B | ##0} | ∅}.
 
     (* Church pairs *)
-    Example pair := (tabs (tabs (tabs (tapp (tapp #0 #2) #1)))).       
-    
+    Example pair := (tabs (tabs (tabs (tapp (tapp #0 #2) #1)))).
+
     (* Pair[A,B]^q_X := ((a : A^{}) -> ((b : B^{}) -> X^q)^q⊔{a})^{} -> X^q *)
-    Example TPair A B X q := {{A | ∅} ==> {{B | ∅} ==> {X | q} | q ⊔ ##0} | ∅} ==> {X | q}.      
-    
+    Example TPair A B X q := {{A | ∅} ==> {{B | ∅} ==> {X | q} | q ⊔ ##0} | ∅} ==> {X | q}.
+
     (* Pair destructors *)
     Example fst := (tabs (tapp #0 church_true)).
     Example snd := (tabs (tapp #0 church_false)).
@@ -96,60 +96,60 @@ Section Warmup.
     Variables (Γ : tenv) (φ : qual) (Σ : senv) (A B : ty).
     Context (phiwf : closed_qual 0 (length Γ) (length Σ) φ)
             (Awf   : closed_ty 0 (length Γ) (length Σ) A)
-            (Bwf   : closed_ty 0 (length Γ) (length Σ) B).           
-    
+            (Bwf   : closed_ty 0 (length Γ) (length Σ) B).
+
     (** Γ|Σ ⊢ᵠ λa.λb.a : ((a:A^{}) -> ((b:B^{}) -> A^{a})^{a})^{} *)
     Example church_true_ht : has_type Γ φ Σ church_true (church_true_T A B) ∅.
-      intros. unfold church_true. unfold church_true_T. 
-      apply t_abs; ccrush. 
+      intros. unfold church_true. unfold church_true_T.
       apply t_abs; ccrush.
-      eapply t_var; ccrush.      
-    Qed.    
+      apply t_abs; ccrush.
+      eapply t_var; ccrush.
+    Qed.
 
     (** Γ|Σ ⊢ᵠ λa.λb.b : ((a:A^{}) -> ((b:B^{}) -> B^{b})^{})^{} *)
     Example church_false_ht : has_type Γ φ Σ church_false (church_false_T A B) ∅.
       intros. unfold church_false. unfold church_false_T.
       apply t_abs; ccrush.
-      apply t_abs; ccrush.      
+      apply t_abs; ccrush.
       eapply t_var; ccrush.
-    Qed.      
-              
-    (* Γ|Σ ⊢ᵠ pair : ( (a : A^{}) -> ((b : B^{}) -> (Pair[A,B]^q_X)^q⊔{a,b})^q⊔{a} )^q *)        
-    Example t_pair : forall {X q}, 
-      closed_ty 0 (length Γ) (length Σ) X -> 
-      closed_qual 0 (length Γ) (length Σ) q -> 
-      saturated Γ Σ q -> (* required in the lazy system *)  
+    Qed.
+
+    (* Γ|Σ ⊢ᵠ pair : ( (a : A^{}) -> ((b : B^{}) -> (Pair[A,B]^q_X)^q⊔{a,b})^q⊔{a} )^q *)
+    Example t_pair : forall {X q},
+      closed_ty 0 (length Γ) (length Σ) X ->
+      closed_qual 0 (length Γ) (length Σ) q ->
+      saturated Γ Σ q -> (* required in the lazy system *)
       q ⊑ φ ->
-      has_type Γ φ Σ pair ({A | ∅} ==> {{B | ∅} ==> {TPair A B X q | (q ⊔ ##0 ⊔ ##1) } | q ⊔ ##0}) q. 
+      has_type Γ φ Σ pair ({A | ∅} ==> {{B | ∅} ==> {TPair A B X q | (q ⊔ ##0 ⊔ ##1) } | q ⊔ ##0}) q.
       intros. unfold pair. unfold TPair.
       apply t_abs; ccrush.
       apply t_abs; ccrush.
       apply t_abs; simpl; ccrush.
-      replace q with (openq $$(S (length Γ)) q) at 4; try solve [opening].      
+      replace q with (openq $$(S (length Γ)) q) at 4; try solve [opening].
       apply t_app with (T1:=B) (df:=q⊔$$(length Γ)); ccrush.
       * replace (q ⊔ $$ (length Γ))
         with (openq $$(length Γ) (q ⊔ ##0)) at 2; try solve [opening; auto].
         apply t_app with (T1:=A) (df:=$$(S (S (length Γ)))); ccrush.
-        + eapply t_var; ccrush.          
-        + eapply t_var; ccrush.                
-      * eapply t_var; ccrush.           
+        + eapply t_var; ccrush.
+        + eapply t_var; ccrush.
+      * eapply t_var; ccrush.
     Qed.
 
-    (** These Church encodings cannot be applied to arguments, unless there is a form of dependent function application that 
+    (** These Church encodings cannot be applied to arguments, unless there is a form of dependent function application that
         permits "deep" dependency in the type, or abstraction with function self qualifiers. The standard application rule
-        t_app forbids general dependency on the argument in a function's codomain. *)    
+        t_app forbids general dependency on the argument in a function's codomain. *)
     Variable (a b: tm).
-    Context (a_ht : has_type Γ φ Σ a A ∅) (b_ht : has_type Γ φ Σ b B ∅).        
-    Example church_true_use_bad : exists S q, has_type Γ φ Σ (tapp church_true a) S q.      
-      eexists. eexists. eapply t_app with (T1:=A) (df:=∅) (d1:=∅). cleanup.      
-      eapply church_true_ht. eapply a_ht.            
+    Context (a_ht : has_type Γ φ Σ a A ∅) (b_ht : has_type Γ φ Σ b B ∅).
+    Example church_true_use_bad : exists S q, has_type Γ φ Σ (tapp church_true a) S q.
+      eexists. eexists. eapply t_app with (T1:=A) (df:=∅) (d1:=∅). cleanup.
+      eapply church_true_ht. eapply a_ht.
       (* This condition states that the codomain of church_true should not be dependent on the argument (zero bound variables).
-         However, there is a dangling bound variable in the codomain's qualifier, and we cannot proceed. *)      
+         However, there is a dangling bound variable in the codomain's qualifier, and we cannot proceed. *)
       admit.
-    Abort.  
+    Abort.
 
   End Church.
-  
+
 End Warmup.
 
 (** Derived Syntax and Typing Rules *)
@@ -158,17 +158,17 @@ Definition seq (t1 t2 : tm): tm := (tapp (tapp (tabs (tabs #0)) t1) t2).
 
 Lemma t_seq : forall Γ φ Σ t1 T1 q1 t2 T2 q2,
     has_type Γ φ Σ t1 T1 q1 ->
-    has_type Γ φ Σ t2 T2 q2 ->    
-    saturated Γ Σ q1 ->  
-    saturated Γ Σ q2 ->  
+    has_type Γ φ Σ t2 T2 q2 ->
+    saturated Γ Σ q1 ->
+    saturated Γ Σ q2 ->
     has_type Γ φ Σ (seq t1 t2) T2 q2.
-  intros. unfold seq.  
-  replace q2 with (openq q2 ##0); try solve [opening; auto].  
+  intros. unfold seq.
+  replace q2 with (openq q2 ##0); try solve [opening; auto].
   eapply t_app with (T1:=T2) (df:=(openq q1 ∅)); eauto; crush.
   * qual_destruct. eapply t_app with (T1:=T1) (df:=∅); ccrush.
     + apply t_abs; ccrush.
       apply t_abs; ccrush.
-      eapply t_var; ccrush.      
+      eapply t_var; ccrush.
 Qed.
 
 (** val/let bindings  *)
@@ -177,18 +177,18 @@ Definition val (t1 t2 : tm): tm := (tapp (tabs t2) t1).
 Lemma t_val : forall Γ φ df Σ t1 T1 q1 t2 T2 q2,
     closed_tm 1 (length Γ) (length Σ) t2 ->
     closed_ty 0 (length Γ) (length Σ) T2 ->
-    closed_qual 1 (length Γ) (length Σ) q2 ->    
-    closed_qual 0 (length Γ) (length Σ) df ->      
+    closed_qual 1 (length Γ) (length Σ) q2 ->
+    closed_qual 0 (length Γ) (length Σ) df ->
     has_type Γ φ Σ t1 T1 q1 ->
-    df ⊑ φ ->    
-    saturated Γ Σ q1 -> 
-    saturated Γ Σ df ->     
+    df ⊑ φ ->
+    saturated Γ Σ q1 ->
+    saturated Γ Σ df ->
     has_type ((T1, df ⋒ q1) :: Γ) (df ⊔ $$(length Γ)) Σ (open_tm' Γ t2) (open_ty' Γ T2) (openq' Γ q2) ->
     has_type Γ φ Σ (val t1 t2) T2 (openq q1 q2).
   intros. unfold val. specialize (has_type_closed H3). intuition.
   eapply t_app; eauto; crush.
-  apply t_abs; ccrush.  
-  apply has_type_filter in H7. eapply unopen_subqual; eauto. 
+  apply t_abs; ccrush.
+  apply has_type_filter in H7. eapply unopen_subqual; eauto.
   unfold_open in H7. unfold_open. eapply subqual_trans; eauto. ccrush.
 Qed.
 
@@ -216,7 +216,7 @@ Section FunAbs.
       intros. unfold deref. subst c.
       apply t_abs; ccrush.
       apply t_deref with (d:=$$0).
-      eapply t_var; ccrush.      
+      eapply t_var; ccrush.
     Qed.
 
     (** deref(unit) // : Unit *)
@@ -237,22 +237,22 @@ Section FunAbs.
               (c2visible : $c2 ∈ᵥ φ)
               (Γ12 := [(TRef TUnit, ∅);(TRef TUnit, ∅)]).
 
-      (** 
-          Note: this version of λ* lacks a ⊥ qualifier (and base type other than Unit). 
-          We replace the example shown in the paper by an equivalent one, which is typeable in this version. 
-          
+      (**
+          Note: this version of λ* lacks a ⊥ qualifier (and base type other than Unit).
+          We replace the example shown in the paper by an equivalent one, which is typeable in this version.
+
           def addRef(c : Ref[Unit]^{}) = { !c1; !c } // : // (Ref[Unit]^{} => Unit)^{c1}
-      *)        
+      *)
       Example addRef := (tabs (seq (! $c1) (! #0))).
       Example addRef_ty : has_type Γ12 φ Σ addRef ({TRef TUnit | ∅} ==> {TUnit | ∅}) $$c1.
         unfold addRef.
-        apply t_abs; ccrush.        
+        apply t_abs; ccrush.
         eapply t_seq with (T1:=TUnit) (q1:=∅); crush.
         * apply t_deref with (d:=$$c1); crush.
           eapply t_var; crush.
         * apply t_deref with (d:=$$2); crush.
           eapply t_var; crush.
-      Qed.      
+      Qed.
 
       (**
           The application addRef(c2) is legal, since c1 and c2 are different and hence do not overlap.
@@ -262,29 +262,29 @@ Section FunAbs.
         apply t_app with (T1:=(TRef TUnit)) (df:=$$c1); ccrush.
         * apply addRef_ty.
         * eapply t_var; crush.
-      Qed.   
+      Qed.
 
-      (* With the addRef_ty type assignment above, it is impossible to type the application addRef(c1), as expected. *) 
+      (* With the addRef_ty type assignment above, it is impossible to type the application addRef(c1), as expected. *)
       Example addRef_app_bad : exists S q, has_type Γ12 φ Σ (tapp addRef $c1) S q.
         eexists. eexists. (* note the (minimal!) qualifiers of addRef and $c1, which are both just c1. *)
         eapply t_app with (d1:=$$c1) (df:=$$c1); cleanup.
-        (* The type of addRef above enforces strict separation between the function and its argument (i.e., the domain qualifier is ∅), 
+        (* The type of addRef above enforces strict separation between the function and its argument (i.e., the domain qualifier is ∅),
            but both addRef and $c1 contain $c1 in their qualifiers. Note that we end up needing to type addRef with the singleton set {c1} in the domain's qualifier.
-           However, due to contravariance, no possible subsumption step could ever eliminate {c1}.  *)                 
+           However, due to contravariance, no possible subsumption step could ever eliminate {c1}.  *)
         Abort.
 
-      (* The paper shows the following alternative typing for addRef that would permit overlapping with $c1, and thus 
+      (* The paper shows the following alternative typing for addRef that would permit overlapping with $c1, and thus
          permit addRef_app_bad. *)
       Example addRef_alt_ty : has_type Γ12 φ Σ addRef ({TRef TUnit | $$c1} ==> {TUnit | ∅}) $$c1.
-        unfold addRef. 
+        unfold addRef.
         apply t_abs; ccrush.
         eapply t_seq with (T1:=TUnit) (q1:=∅); crush.
         * apply t_deref with (d:=$$c1); crush.
           eapply t_var; crush.
         * apply t_deref with (d:=$$2); crush.
           eapply t_var; ccrush.
-      Qed. 
-      
+      Qed.
+
       Example addRef_alt_app_c1: has_type Γ12 φ Σ (tapp addRef $c1) TUnit ∅.
         replace (∅) with (openq $$c1 ∅); try solve [opening; auto].
         apply t_app with (T1:=(TRef TUnit)) (df:=$$c1); ccrush.
@@ -307,7 +307,7 @@ Section FunAbs.
       apply t_seq with (T1:=TUnit) (q1:=∅); ccrush.
       * apply t_deref with (d:=$$0).
         eapply t_var; crush.
-      * eapply t_var; crush. 
+      * eapply t_var; crush.
     Qed.
 
     (** def returnArg(x) = { !x; x } // : ((x : Ref[Unit]^∅) => Ref[Unit]^{x})^∅  *)
@@ -356,7 +356,7 @@ Section Escaping.
    *)
   Example fresh_ty_internal : has_type Γ φ Σ (tabs (tref tunit)) ({TUnit | ∅} ==> {TRef TUnit | ∅}) ∅.
     apply t_abs; ccrush.
-    apply t_ref with (d:=∅). 
+    apply t_ref with (d:=∅).
     apply t_base; crush.
   Qed.
 
@@ -370,7 +370,7 @@ Section Escaping.
     *)
   Example fresh_ty_external : has_type Γ φ Σ (val tunit (tabs (tref tunit))) ({TUnit | ∅} ==> {TRef TUnit | ∅}) ∅.
     replace (∅) with (openq ∅ ∅); try solve [opening;crush].
-    eapply t_val with (df:=∅); ccrush. 
+    eapply t_val with (df:=∅); ccrush.
     apply t_abs; ccrush.
     apply t_ref with (d:=∅). apply t_base. crush.
   Qed.
@@ -423,12 +423,12 @@ Section Escaping.
 
   (** In order to assign a type to the escaping closure
 
-          val c = { val y = new Ref(unit); { () => y } } 
+          val c = { val y = new Ref(unit); { () => y } }
 
       we need abstraction by function self qualifiers.
   *)
-  Example closure_escape := (val (tref tunit) (tabs #1)).  
-  (**            
+  Example closure_escape := (val (tref tunit) (tabs #1)).
+  (**
       This example also explains why the dependent function application in λ* is restricted, so that the argument variable may
       only occur in the function codomain's qualifier, but not within the codomain type:
 
@@ -449,7 +449,7 @@ Section Escaping.
 
           { val y = ...; { () => new Ref(unit) } }
 
-      where the closure always returns a fresh reference. The solution is introducing function self-qualifiers.      
+      where the closure always returns a fresh reference. The solution is introducing function self-qualifiers.
   *)
 
 End Escaping.
@@ -459,13 +459,13 @@ Section HigherOrder.
 
   (** Non-Interference (Sec. 2.4.2) *)
   Section NonInterference.
-    (** For simplicity, we define par as a sequential execution of two thunks. *)    
-    Example par := (tabs (tabs (seq (tapp #1 tunit) (tapp #0 tunit)))).    
-    (** par inhabits the type shown in the paper, i.e., 
-    
-        par : ((a : (Unit => Unit)^{}) => ((b : (Unit => Unit)^{}) => Unit)^{a})^{} 
+    (** For simplicity, we define par as a sequential execution of two thunks. *)
+    Example par := (tabs (tabs (seq (tapp #1 tunit) (tapp #0 tunit)))).
+    (** par inhabits the type shown in the paper, i.e.,
+
+        par : ((a : (Unit => Unit)^{}) => ((b : (Unit => Unit)^{}) => Unit)^{a})^{}
      *)
-    Example t_par : forall {Γ Σ φ}, closed_qual 0 (length Γ) (length Σ) φ -> 
+    Example t_par : forall {Γ Σ φ}, closed_qual 0 (length Γ) (length Σ) φ ->
       has_type Γ φ Σ par ({{TUnit | ∅} ==> {TUnit | ∅} | ∅} ==> {{{TUnit | ∅} ==> {TUnit | ∅} | ∅} ==> {TUnit | ∅} | ##0}) ∅.
       intros. unfold par. apply t_abs; ccrush. apply t_abs; ccrush. eapply t_seq with (T1:=TUnit) (q1:=∅); ccrush.
       * replace (∅) with (openq ∅ ∅); try solve [opening;crush].
@@ -476,7 +476,7 @@ Section HigherOrder.
         eapply t_app with (df:=$$(S (length Γ))); ccrush; intuition.
         - eapply t_var; ccrush.
         - apply t_base; ccrush.
-    Qed.      
+    Qed.
 
     Variables (Γ : tenv) (Σ : senv) (φ : qual).
     Context (phiwf : closed_qual 0 (length Γ) (length Σ) φ).
@@ -488,7 +488,7 @@ Section HigherOrder.
     Example noninterfering := (val (tref tunit)
                                   (val (tref tunit)
                                       (tapp (tapp par (tabs !(#2))) (tabs !(#1))))).
-                                      
+
     Example noninterfering_ty : has_type Γ φ Σ noninterfering TUnit ∅.
       unfold noninterfering. replace (∅) with (openq ∅ ∅); try solve [opening;crush].
       eapply t_val with (T1:=TRef TUnit) (df:=∅); crush.
@@ -505,11 +505,11 @@ Section HigherOrder.
           + apply t_abs; ccrush. eapply t_deref with (d:=$$(S (length Γ))); eapply t_var; ccrush.
         Unshelve. all : apply 0.
     Qed.
-                
+
     (**
-        Bad use of par: 
+        Bad use of par:
         val c1 = new Ref(unit); val c2 = new Ref(unit); par { !c1; !c2 } { !c1; !c2 }
-    *)                                  
+    *)
     Example interfering := (val (tref tunit)
                                (val (tref tunit)
                                    (tapp (tapp par (tabs (seq !(#2) !(#1)))) (tabs (seq !(#2) !(#1)))))).
@@ -518,7 +518,7 @@ Section HigherOrder.
     Example aux1 : has_type [(TRef TUnit, ∅) ; (TRef TUnit, ∅)] ($$0 ⊔ $$1) [] (tabs (seq !($0) !($1))) ({TUnit | ∅} ==> {TUnit | ∅}) ($$0 ⋓ $$1).
       apply t_abs; ccrush. eapply t_seq with (q1:=∅); ccrush.
       * eapply t_deref. eapply t_var; ccrush.
-      * eapply t_deref. eapply t_var; ccrush.  
+      * eapply t_deref. eapply t_var; ccrush.
     Qed.
 
     (** now, show that interfering can't be typed *)
@@ -526,15 +526,15 @@ Section HigherOrder.
                                           (tapp (tapp par (tabs (seq !($0) !($1)))) (tabs (seq !($0) !($1)))) S q.
       eexists. eexists. eapply t_app. 2: eapply aux1.
       eapply t_app. 2: eapply aux1.
-      (* from t_par we know 1) df = ∅ and 2) d20 = ##0, and 
+      (* from t_par we know 1) df = ∅ and 2) d20 = ##0, and
          3) openq ($$ (0) ⊔ $$ (1)) ?d20 ⋒ ($$ (0) ⊔ $$ (1)) = ∅.
-         
+
          However, 2), and 3) together are unsatisfiable:
       *)
       assert (((openq ($$ (0) ⊔ $$ (1)) ##0) ⋒ ($$ (0) ⊔ $$ (1))) = ($$ (0) ⊔ $$ (1))). {
-        opening. simpl. qdec.        
-      }      
-    Abort.  
+        opening. simpl. qdec.
+      }
+    Abort.
 
   End NonInterference.
 
@@ -546,7 +546,7 @@ Section HigherOrder.
             (cl_nothing : closed_ty 0 0 0 Nothing).
     (** Assume an effects as capabilities model. The capability type for throwing (Unit-valued) exceptions is a function Unit => Nothing: *)
     Context (CanThrow := (TFun ∅ ∅ TUnit Nothing))
-            (cl_canthrow : closed_ty 0 0 0 CanThrow).            
+            (cl_canthrow : closed_ty 0 0 0 CanThrow).
     (** Assume we can allocate fresh capabilities for throwing exceptions: *)
     Variable (mkThrow : tm).
     Context (t_mkThrow : forall Γ φ Σ, closed_qual 0 (length Γ) (length Σ) φ -> has_type Γ φ Σ mkThrow CanThrow ∅).
@@ -565,14 +565,14 @@ Section HigherOrder.
         closed_qual 0 (length Γ) (length Σ) φ ->
         closed_ty 0 (length Γ) (length Σ) A ->
         has_type Γ φ Σ try_ ({{CanThrow | ∅} ==> {A | ∅} | ∅} ==> {A | ∅}) ∅.
-      intros. unfold try_. specialize (t_mkThrow _ _ _ H) as H'.    
-      apply t_abs; ccrush. replace (∅) with (openq ∅ ∅) at 4; try solve [opening].      
-      eapply t_val with (df:=$$(length Γ)); ccrush.      
+      intros. unfold try_. specialize (t_mkThrow _ _ _ H) as H'.
+      apply t_abs; ccrush. replace (∅) with (openq ∅ ∅) at 4; try solve [opening].
+      eapply t_val with (df:=$$(length Γ)); ccrush.
       * apply t_mkThrow; ccrush.
       * replace (∅) with (openq $$(S (length Γ)) ∅) at 5; try solve [opening].
         eapply t_app with (T1:=CanThrow) (df:=$$(length Γ)); ccrush.
-        - eapply t_var; ccrush. 
-        - eapply t_var; ccrush. 
+        - eapply t_var; ccrush.
+        - eapply t_var; ccrush.
     Qed.
 
     Variable (Σ : senv).
@@ -583,10 +583,10 @@ Section HigherOrder.
 
        demonstrates a legal use of capabilities. *)
     Example nonescaping := (tabs (seq !($c1) (tapp #0 tunit))).
-    
+
     (** Using the nonescaping block with try is indeed well-typed. *)
     Example nonescaping_ok : has_type Γ $$c1 Σ (tapp try_ nonescaping) TUnit ∅.
-      unfold nonescaping. subst c1. 
+      unfold nonescaping. subst c1.
       replace (∅) with (openq $$0 ∅); try solve [opening; auto].
       assert (Hf : closed_qual 0 (length Γ) (length Σ) $$0); crush. apply t_mkThrow in Hf.
       eapply t_app with (df:=∅); ccrush.
@@ -599,22 +599,22 @@ Section HigherOrder.
           eapply t_app with (T1:=TUnit) (df:=$$1); ccrush.
           - apply t_sub with (T1:=CanThrow) (d1:=$$1); ccrush.
             ** subst CanThrow. eapply t_var; ccrush.
-            ** subst CanThrow. repeat (constructor; ccrush).            
+            ** subst CanThrow. repeat (constructor; ccrush).
           - apply t_base; ccrush.
     Qed.
-    
+
     (** In constrast, this block
 
             { throw => !c1 ; { () => throw () } }
 
        returns a closure over the capability, which is rejected by try. *)
     Example escaping := (tabs (seq !($c1) (tabs (tapp #1 tunit)))).
-    (** First, the type of escaping indeed leaks the capability: 
-        
+    (** First, the type of escaping indeed leaks the capability:
+
             escaping : ((c: CanThrow^{}) => (Unit => Unit)^{c})^{c1}
       *)
     Example escaping_ty : has_type Γ $$c1 Σ escaping ({CanThrow | ∅} ==> {{TUnit | ∅} ==> {TUnit | ∅} | ##0}) $$c1.
-      unfold escaping. subst c1. subst Γ. 
+      unfold escaping. subst c1. subst Γ.
       apply t_abs; ccrush.
       apply t_seq with (T1:=TUnit) (q1:=∅); ccrush.
       * apply t_deref with (d:=$$0); ccrush.
@@ -625,12 +625,12 @@ Section HigherOrder.
           - eapply t_var; ccrush.
           - unfold CanThrow. repeat (constructor; ccrush).
         + apply t_base; ccrush.
-    Qed.        
+    Qed.
     (** Now suppose we could type the following application: *)
     Example escaping_bad : exists S q, has_type Γ $$c1 Σ (tapp try_ escaping) S q.
-      eexists. eexists. eapply t_app with (df:=∅). 2: eapply escaping_ty. cleanup.      
-      * (* We have a typing mismatch: *) 
-        Fail eapply try_ty.        
+      eexists. eexists. eapply t_app with (df:=∅). 2: eapply escaping_ty. cleanup.
+      * (* We have a typing mismatch: *)
+        Fail eapply try_ty.
         (* try_ requires that the block `escaping` returns a disjoint function, but the type of `escaping` is
            dependent on its capability argument.  *)
     Abort.
@@ -643,25 +643,25 @@ Section HigherOrder.
     Variables (CanIO : ty) (doIO : tm).
     Context (cl_CanIO : closed_ty 0 0 0 CanIO)
             (t_doio  : forall Γ φ Σ, has_type Γ φ Σ doIO ({CanIO | ∅} ==> {TUnit | ∅}) ∅)
-            (cl_doIO : closed_tm 0 0 0 doIO).            
+            (cl_doIO : closed_tm 0 0 0 doIO).
 
     Example withoutIO := (tabs (tabs (tapp #0 tunit))).
     (** The type of the withoutIO combinator, encoding polymorphism as metalevel quantification.
 
-            withoutIO : forall A. ((cap: CanIO^∅) => ((block : (Unit => A^∅)^∅) => A^∅))^{cap})^∅ 
+            withoutIO : forall A. ((cap: CanIO^∅) => ((block : (Unit => A^∅)^∅) => A^∅))^{cap})^∅
       *)
     Example t_withoutIO : forall A Γ φ Σ,
         closed_qual 0 (length Γ) (length Σ) φ ->
         closed_ty 0 (length Γ) (length Σ) A ->
         has_type Γ φ Σ withoutIO ({CanIO | ∅} ==> {{{TUnit | ∅} ==> {A | ∅} | ∅} ==> {A | ∅}| ##0}) ∅.
-      intros. unfold withoutIO. 
+      intros. unfold withoutIO.
       apply t_abs; ccrush.
       apply t_abs; ccrush.
       replace (∅) with (openq ∅ ∅) at 5; try solve [opening; auto].
       apply t_app with (T1:=TUnit) (df:=$$(S (length Γ))); ccrush.
       * eapply t_var; ccrush.
       * apply t_base; ccrush.
-    Qed.       
+    Qed.
 
     #[local] Hint Unfold just_fv : core.
 
@@ -672,9 +672,9 @@ Section HigherOrder.
             (φ := $$canIO ⊔ $$c1)
             (Σ : senv).
     (** An OK use of withoutIO.
-        
+
             withoutIO(canIO) { !c1 }
-      *)        
+      *)
     Example withoutIO_ok  := (tapp (tapp withoutIO $canIO) (tabs !($c1))).
     Example withoutIO_ok_ty : has_type Γ φ Σ withoutIO_ok TUnit ∅.
       unfold withoutIO_ok. subst c1. subst canIO. subst Γ. subst φ.
@@ -686,28 +686,28 @@ Section HigherOrder.
         + eapply t_var; ccrush.
       * apply t_abs; ccrush.
         eapply t_deref. eapply t_var; ccrush.
-    Qed.    
+    Qed.
 
     (** A bad use of withoutIO.
 
             withoutIO(canIO) { !c1; doIO(canIO) }
       *)
     Example withoutIO_bad := (tapp (tapp withoutIO $canIO) (tabs (seq !($c1) (tapp doIO $canIO)))).
-    (* First, consider the block's type 
+    (* First, consider the block's type
            { !c1; doIO(canIO) } : (Unit => Unit)^{c1,canIO} *)
-    Example withoutIO_bad_block_ty : has_type [(TRef TUnit, ∅); (CanIO, ∅)] ($$0 ⊔ $$1) Σ (tabs (seq !($1) (tapp doIO $0))) ({TUnit | ∅} ==> {TUnit | ∅}) ($$0 ⊔ $$1).    
+    Example withoutIO_bad_block_ty : has_type [(TRef TUnit, ∅); (CanIO, ∅)] ($$0 ⊔ $$1) Σ (tabs (seq !($1) (tapp doIO $0))) ({TUnit | ∅} ==> {TUnit | ∅}) ($$0 ⊔ $$1).
       apply t_abs; ccrush. apply t_seq with (T1:=TUnit) (q1:=∅); ccrush.
       * eapply t_deref. eapply t_var; ccrush.
       * replace (∅) with (openq $$0 ∅) at 4; try solve [opening; auto].
         eapply t_app with (df:=∅); ccrush.
         eapply t_var; ccrush.
-    Qed.        
-    (* then, suppose we can assign a type to withoutIO_bad: *)  
+    Qed.
+    (* then, suppose we can assign a type to withoutIO_bad: *)
     Example withoutIO_bad_ty : exists S q, has_type Γ φ Σ withoutIO_bad S q.
-      specialize withoutIO_bad_block_ty as Hblk. eexists. eexists. 
-      unfold withoutIO_bad. 
+      specialize withoutIO_bad_block_ty as Hblk. eexists. eexists.
+      unfold withoutIO_bad.
       eapply t_app. eapply t_app.
-      (* first, let's type these subexpressions, which is easy: *) 
+      (* first, let's type these subexpressions, which is easy: *)
       2: eapply t_var; ccrush. 6: apply withoutIO_bad_block_ty.
       (* matching against t_withoutIO, we have
          1) df = ∅, 2) d20 = ##0, and 3) openq $$ (canIO) ?d20 ⋒ ($$ (0) ⋓ $$ (1)) = ∅
@@ -715,8 +715,8 @@ Section HigherOrder.
       *)
       assert (openq $$(canIO) ##0 ⋒ ($$ (0) ⊔ $$ (1)) = $$canIO). {
         subst canIO. opening. ccrush. unfold just_fv. f_equal. fnsetdec.
-      }      
-    Abort.    
+      }
+    Abort.
 
   End NonAccess.
 
@@ -726,11 +726,11 @@ Section HigherOrder.
         borrow[A,B] : ((x : A^∅) => ((block: (A^∅ => B^∅)^∅) => B^∅)^{x})^∅
      *)
     Example borrow := (tabs (tabs (tapp #0 #1))).
-    Example TBorrow A B := ({A | ∅} ==> {{{A | ∅} ==> {B | ∅} | ∅} ==> {B | ∅} | ##0}).    
-    Example t_borrow : forall {Γ φ Σ A B}, 
+    Example TBorrow A B := ({A | ∅} ==> {{{A | ∅} ==> {B | ∅} | ∅} ==> {B | ∅} | ##0}).
+    Example t_borrow : forall {Γ φ Σ A B},
       closed_qual 0 (length Γ) (length Σ) φ ->
-      closed_ty 0 (length Γ) (length Σ) A -> 
-      closed_ty 0 (length Γ) (length Σ) B ->   
+      closed_ty 0 (length Γ) (length Σ) A ->
+      closed_ty 0 (length Γ) (length Σ) B ->
       has_type Γ φ Σ borrow (TBorrow A B) ∅.
       intros. unfold borrow. unfold TBorrow.
       apply t_abs; ccrush.
@@ -739,18 +739,18 @@ Section HigherOrder.
       eapply t_app with (T1:=A) (df:=$$(S (length Γ))); ccrush.
       * eapply t_var; ccrush.
       * eapply t_var; ccrush.
-    Qed.    
+    Qed.
 
     (* Γ = c1 : Ref[Unit]^{c1} *)
     Context (c1 := 0)
             (Γ := [(TRef TUnit, ∅)])
             (φ := (just_fv c1))
             (Σ : senv).
-    
+
     (** An OK use of borrow:
-        
+
             borrow(c1) { c2 => !c2 }
-      *)        
+      *)
     Example borrow_ok  := (tapp (tapp borrow $c1) (tabs !(#0))).
     Example borrow_ok_ty : has_type Γ φ Σ borrow_ok TUnit ∅.
       unfold borrow_ok. subst c1. subst Γ. subst φ.
@@ -763,7 +763,7 @@ Section HigherOrder.
       * apply t_abs; ccrush.
         eapply t_deref; ccrush.
         eapply t_var; ccrush.
-    Qed.    
+    Qed.
 
     (** A bad use of borrow:
 
@@ -772,16 +772,16 @@ Section HigherOrder.
     Example borrow_bad := (tapp (tapp borrow $c1) (tabs !($c1))).
     (* first, consider the type of the block : *)
     Example borrow_bad_block_ty : has_type Γ φ Σ (tabs !($c1)) ({TRef TUnit | ∅} ==> {TUnit | ∅}) $$c1.
-      subst c1. subst Γ. subst φ. 
+      subst c1. subst Γ. subst φ.
       apply t_abs; ccrush.
       eapply t_deref.
       eapply t_var; ccrush.
     Qed.
-    (* now suppose this is typable: *)   
+    (* now suppose this is typable: *)
     Example borrow_bad_ty : exists S q, has_type Γ φ Σ borrow_bad S q.
       eexists. eexists. unfold borrow_bad.
-      (* both the function and argument of the application alias c1... *) 
-      apply t_app with (T1:={(TRef TUnit) | ∅} ==> {TUnit | ∅}) (df:=$$c1) (d1:=$$c1). (* ... which means the block function expected by borrow(c1) must alias c1 too *)  
+      (* both the function and argument of the application alias c1... *)
+      apply t_app with (T1:={(TRef TUnit) | ∅} ==> {TUnit | ∅}) (df:=$$c1) (d1:=$$c1). (* ... which means the block function expected by borrow(c1) must alias c1 too *)
       2 : eapply borrow_bad_block_ty.
       replace $$c1 with (openq $$c1 ##0) at 3; try solve [opening; auto].
       eapply t_app with (T1:=TRef TUnit) (df:=$$c1).
@@ -789,9 +789,9 @@ Section HigherOrder.
       (* However, instantiating borrow's type reveals that the block parameter needs to be separate (i.e. it is empty).*)
       specialize @t_borrow with (A:=(TRef TUnit)) (B:=TUnit) as HBorrow.
       unfold TBorrow in HBorrow. cleanup.
-      (* Thus we cannot assign borrow's type (and neither use subsumption, due to the negative occurrence of c1) *)            
-      Fail eapply HBorrow.      
-    Abort.        
+      (* Thus we cannot assign borrow's type (and neither use subsumption, due to the negative occurrence of c1) *)
+      Fail eapply HBorrow.
+    Abort.
 
   End Borrowing.
 
@@ -800,25 +800,26 @@ End HigherOrder.
 (** Lightweight Reachability Polymorphism (Sec. 3.4) *)
 Section LightweightPoly.
 
-  (** Since this version of the calculus lacks numbers and reference assignment, we
+  (** Since this version of the calculus lacks numbers, we
       demonstrate reachability polymorphism on an equivalent example:
 
-          def inclike(x) = { !x; x }
+          def inclike(x) = { x := !x; x }
    *)
-  Example inclike := (tabs (seq !(#0) #0)).
-  (** inclike : ((x : Ref[Unit])^∅) => Ref[Unit]^{x })^∅ *)
+  Example inclike := (tabs (seq (tassign (#0) !(#0)) #0)).
+  (** inclike : ((x : Ref[Unit])^∅) => Ref[Unit]^{x})^∅ *)
   Example inclike_ty : forall Γ φ Σ,
       closed_qual 0 (length Γ) (length Σ) φ ->
       has_type Γ φ Σ inclike ({TRef TUnit | ∅} ==> {TRef TUnit | ##0}) ∅.
     intros. unfold inclike.
-    apply t_abs; ccrush. 
+    apply t_abs; ccrush.
     eapply t_seq with (q1:=∅); ccrush.
-    * eapply t_deref.
+    * eapply t_assign.
       eapply t_var; ccrush.
+      eapply t_deref. eapply t_var; ccrush.
     * eapply t_var; ccrush.
   Qed.
 
-  (** Γ := a : Ref[Unit]^{a };  b : Ref[Unit]^{b} ; c1 : Ref[Unit]^{a,b,c1} ; c2 : Ref[Unit]^{a,b,c1,c2} *)
+  (** Γ := a : Ref[Unit]^{a} ; b : Ref[Unit]^{b} ; c1 : Ref[Unit]^{a,b,c1} ; c2 : Ref[Unit]^{a,b,c1,c2} *)
   Context (a := 0) (b := 1) (c1 := 2) (c2 := 3)
           (Γ := [(TRef TUnit, ($$a ⊔ $$b ⊔ $$c1)) ;
                  (TRef TUnit, ($$a ⊔ $$b)) ;
@@ -829,19 +830,19 @@ Section LightweightPoly.
 
   Lemma saturated_abc1 : saturated Γ Σ ($$a ⊔ $$b ⊔ $$c1).
     replace ($$ (a) ⊔ $$ (b) ⊔ $$ (c1)) with (($$ (a) ⊔ $$ (b)) ⊕ c1).
-    eapply saturated_qplus; ccrush. ccrush.    
-  Qed.         
+    eapply saturated_qplus; ccrush. ccrush.
+  Qed.
   #[local] Hint Resolve saturated_abc1 : core.
 
   Lemma saturated_phi : saturated Γ Σ ($$a ⊔ $$b ⊔ $$c1 ⊔ $$c2).
     replace ($$ (a) ⋓ $$ (b) ⋓ $$ (c1) ⋓ $$ (c2)) with (($$ (a) ⋓ $$ (b) ⋓ $$ (c1)) ⊕ c2).
     eapply saturated_qplus; ccrush. ccrush.
   Qed.
-  #[local] Hint Resolve saturated_phi : core.    
+  #[local] Hint Resolve saturated_phi : core.
 
   (** inclike(b) : Ref[Unit]^{b} *)
   Example inc1 : has_type Γ φ Σ (tapp inclike $b) (TRef TUnit) $$b.
-    intros. replace $$b with (openq $$b ##0); try solve [opening; auto].    
+    intros. replace $$b with (openq $$b ##0); try solve [opening; auto].
     eapply t_app with (df:=∅); ccrush.
     * apply inclike_ty; crush.
     * eapply t_var; ccrush.
@@ -854,7 +855,7 @@ Section LightweightPoly.
     eapply t_app with (df:=∅); crush.
     * cleanup. apply inclike_ty; crush.
     * apply t_sub with (T1:=TRef TUnit) (d1:=$$c1); ccrush.
-      eapply t_var; ccrush.      
+      eapply t_var; ccrush.
   Qed.
 
   (** inclike(c2) :  Ref[Unit]^{a,b,c1,c2} *)
@@ -865,7 +866,7 @@ Section LightweightPoly.
     eapply t_app with (df:=∅); crush.
     * cleanup. apply inclike_ty; crush.
     * apply t_sub with (T1:=TRef TUnit) (d1:=$$c2); ccrush.
-      eapply t_var; ccrush.    
+      eapply t_var; ccrush.
   Qed.
 
 End LightweightPoly.

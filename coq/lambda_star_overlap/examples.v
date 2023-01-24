@@ -804,25 +804,26 @@ End HigherOrder.
 (** Lightweight Reachability Polymorphism (Sec. 3.4) *)
 Section LightweightPoly.
 
-  (** Since this version of the calculus lacks numbers and reference assignment, we
+  (** Since this version of the calculus lacks numbers, we
       demonstrate reachability polymorphism on an equivalent example:
 
-          def inclike(x) = { !x; x }
+          def inclike(x) = { x := !x; x }
    *)
-  Example inclike := (tabs (seq !(#0) #0)).
-  (** inclike : ((x : Ref[Unit])^∅) => Ref[Unit]^{x })^∅ *)
+  Example inclike := (tabs (seq (tassign (#0) !(#0)) #0)).
+  (** inclike : ((x : Ref[Unit])^∅) => Ref[Unit]^{x})^∅ *)
   Example inclike_ty : forall Γ φ Σ,
       closed_qual 0 (length Γ) (length Σ) φ ->
       has_type Γ φ Σ inclike ({TRef TUnit | ∅} ==> {TRef TUnit | ##0}) ∅.
     intros. unfold inclike.
     apply t_abs; ccrush.
     eapply t_seq with (q1:=∅); ccrush.
-    * eapply t_deref.
-      T_VAR; ccrush.
+    * eapply t_assign.
+      T_VAR.
+      eapply t_deref. T_VAR; ccrush.
     * T_VAR; ccrush.
   Qed.
 
-  (** Γ := a : Ref[Unit]^{a };  b : Ref[Unit]^{b} ; c1 : Ref[Unit]^{a,b,c1} ; c2 : Ref[Unit]^{a,b,c1,c2} *)
+  (** Γ := a : Ref[Unit]^{a} ; b : Ref[Unit]^{b} ; c1 : Ref[Unit]^{a,b,c1} ; c2 : Ref[Unit]^{a,b,c1,c2} *)
   Context (a := 0) (b := 1) (c1 := 2) (c2 := 3)
           (Γ := [(TRef TUnit, ($$a ⊔ $$b ⊔ $$c1)) ;
                  (TRef TUnit, ($$a ⊔ $$b)) ;

@@ -8,7 +8,7 @@
 
 * [`polymorphism`](polymorphism) -- Coq mechanization of the $λ^\diamond$-calculus [2] and its variations, featuring a refined reachability model that scales to parametric type polymorphism.
 
-* [`lr`](lr) -- Step-indexed logical relations for proving semantic type soundness of the $λ^*$-calculus [1,3].
+* [`lr`](lr) -- Logical relations for proving semantic type soundness of the $λ^*$-calculus [1,3].
 
 ### Acknowledgements
 
@@ -17,7 +17,7 @@ would like to thank [Boruch-Gruszecki et al.](https://arxiv.org/abs/2105.11896),
 
 ## Prototype Implementations
 
-* Tiark Rompf's [prototype](http://tiarkrompf.github.io/notes/?/graph-ir/) for [1],
+* Interactive [prototype](http://tiarkrompf.github.io/notes/?/graph-ir/) for [1],
 also demonstrating the use of reachability types for graph-based IRs for impure functional languages [3].
 
 ## Contributors

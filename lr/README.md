@@ -2,7 +2,7 @@
 
 ## Overview
 
-Step-indexed logical relations for proving semantic type soundness of reachability types [1], gradually increasing in complexity. More version are forthcoming.
+Logical relations for proving semantic type soundness of reachability types [1], gradually increasing in complexity. More version are forthcoming.
 
 * [`Stlc`](stlc.v) -- Semantic type soundness proof of the simply typed lambda calculus.
 * [`Stlc_reach`](stlc_reach.v) -- Extend the stlc version with reachability qualifiers.

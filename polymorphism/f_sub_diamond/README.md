@@ -2,7 +2,7 @@
 
 ## Variant
 
-This version extends the [base](lambda_diamond_base) $\lambda^{\diamond}$-calculus with bounded
+This version extends the [base](../lambda_diamond_base) $\lambda^{\diamond}$-calculus with bounded
 type-and-qualifier polymorphism, akin to System $F_{<:}$.
 
 ### Limitations of this Variant

@@ -8,6 +8,8 @@ Reachability types are a new take on modeling lifetimes and sharing in high-leve
 
 * [`base`](base) -- Coq mechanization of the $λ^*$-calculus [1] and its variations, gradually increasing in complexity.
 
+* [`effects`](effects) -- Coq mechanization of the $λ_\varepsilon^*$-calculus [1] and its variations, gradually increasing in complexity.
+
 * [`polymorphism`](polymorphism) -- Coq mechanization of the $λ^\diamond$-calculus [2] and its variations, featuring a refined reachability model that scales to parametric type polymorphism.
 
 * [`lr`](lr) -- Logical relations for proving semantic type soundness of the $λ^*$-calculus [1,3].

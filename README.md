@@ -1,5 +1,7 @@
 # Reachability Types
 
+Reachability types are a new take on modeling lifetimes and sharing in high-level functional languages, showing how to integrate Rust-style reasoning capabilities with higher-order functions, polymorphic types, and similar high-level abstractions.
+
 ## Mechanizations
 
 ### Overview
@@ -12,8 +14,7 @@
 
 ### Acknowledgements
 
-The mechanizations based on sets reuse some libraries by the [UPenn PL Club](https://www.cis.upenn.edu/~plclub/popl08-tutorial/code/index.html) that complement the FSet library shipping with [Coq](https://coq.inria.fr/distrib/current/stdlib/Coq.FSets.FSetInterface.html). We further
-would like to thank [Boruch-Gruszecki et al.](https://arxiv.org/abs/2105.11896), whose artifact taught us how to set up the FSet library with extensional equality.
+The mechanizations based on sets reuse some libraries by the [UPenn PL Club](https://www.cis.upenn.edu/~plclub/popl08-tutorial/code/index.html) that complement the FSet library shipping with [Coq](https://coq.inria.fr/distrib/current/stdlib/Coq.FSets.FSetInterface.html). We set up the FSet library with extensional equality as inspired by [Boruch-Gruszecki et al.](https://arxiv.org/abs/2105.11896)'s artifact.
 
 ## Prototype Implementations
 

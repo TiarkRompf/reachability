@@ -97,7 +97,7 @@ Definition openq' {A} (env : list A) d :=
 Fixpoint open_rec_ty (k : nat) (d' : qual) (T : ty) : ty :=
   match T with
   | TUnit            => TUnit
-  | TFun d1 d2 ε T1 T2 => TFun (open_qual k d' d1) (open_qual (S k) d' d2) (open_qual k d' ε) (open_rec_ty k d' T1) (open_rec_ty (S k) d' T2)
+  | TFun d1 d2 ε T1 T2 => TFun (open_qual k d' d1) (open_qual (S k) d' d2) (open_qual (S k) d' ε) (open_rec_ty k d' T1) (open_rec_ty (S k) d' T2)
   | TRef T           => TRef (open_rec_ty k d' T)
   end.
 
@@ -219,7 +219,7 @@ Inductive closed_ty : nat(*B*) -> nat(*F*) -> nat(*Loc*) -> ty -> Prop :=
 | cl_TFun : forall b f l d1 d2 ε T1 T2,
     closed_qual b f l d1 ->
     closed_qual (S b) f l d2 ->
-    closed_qual b f l ε ->
+    closed_qual (S b) f l ε ->
     closed_ty b f l T1 ->
     closed_ty (S b) f l T2 ->
     closed_ty b f l (TFun d1 d2 ε T1 T2)
@@ -294,7 +294,7 @@ Inductive has_type : tenv -> qual -> senv -> tm -> ty -> qual -> qual -> Prop :=
     closed_tm 1 (length Γ) (length Σ) t ->
     closed_ty 0 (length Γ) (length Σ) (TFun d1 d2 ε T1 T2) ->
     closed_qual 0 (length Γ) (length Σ) φ ->
-    closed_qual 0 (length Γ) (length Σ) ε ->
+    closed_qual 1 (length Γ) (length Σ) ε ->
     df ⊑ φ ->
     saturated Γ Σ d1 ->
     saturated Γ Σ df ->
@@ -709,7 +709,7 @@ Qed.
 Lemma closed_ty_monotone : forall {T b l f}, closed_ty b f l T -> forall {b' f' l'}, b <= b' -> f <= f' -> l <= l' -> closed_ty b' f' l' T.
   intros T b f l H. induction H; intuition.
   constructor; auto. eapply closed_qual_monotone; eauto.
-  eapply closed_qual_monotone; eauto. lia. eapply closed_qual_monotone; eauto.
+  eapply closed_qual_monotone; eauto. lia. eapply closed_qual_monotone; eauto. lia. 
   eapply IHclosed_ty2; eauto. lia.
 Qed.
 
@@ -954,7 +954,7 @@ Lemma open_rec_ty_commute : forall T i j x y,
     try solve [erewrite IHT1; eauto; erewrite IHT2; eauto | erewrite IHT; eauto].
   erewrite open_qual_commute; eauto.
   erewrite open_qual_commute with (i:=(S i)); eauto.
-  erewrite open_qual_commute with (i:=(i)); eauto.
+  erewrite open_qual_commute with (i:=(S i)); eauto.
   erewrite IHT1; eauto; erewrite IHT2; eauto.
 Qed.
 
@@ -1050,7 +1050,7 @@ Lemma open_rec_ty_commute'' : forall T i j d' d'' f l, i <> j -> closed_qual 0 f
     try solve [erewrite IHT1; eauto; erewrite IHT2; eauto | erewrite IHT; eauto].
   erewrite open_qual_commute''; eauto.
   erewrite open_qual_commute'' with (i:= (S i)); eauto.
-  erewrite open_qual_commute'' with (i:= (i)); eauto.
+  erewrite open_qual_commute'' with (i:= (S i)); eauto.
   erewrite IHT1; eauto; erewrite IHT2; eauto.
 Qed.
 
@@ -2930,7 +2930,7 @@ Proof.
     eapply weaken_flt with (φ' := d) in H5; intuition. eapply t_sub; eauto.
     constructor; intuition. inversion H4. intuition.
   - specialize (qstp_closed H4) as Hcl. intuition. inversion H1. subst.
-    assert (has_type [] df1 Σ (tabs t0) (TFun d1 d2 ε1 T1 T2) df1∅). { constructor; eauto. }
+    assert (has_type [] df1 Σ (tabs t0) (TFun d1 d2 ε1 T1 T2) df1 ∅). { constructor; eauto. }
     eapply weaken_flt with (φ' := df2) in H9.
     eapply t_sub; eauto. constructor; intuition. inversion H4. auto. auto.
 Qed.
@@ -3379,22 +3379,23 @@ Proof.
            pose proof (extends_length H26).
            apply closed_qual_monotone with (b':=0) (f':=(length ([]: tenv))) (l':=(length Σ')) in H41; eauto.
            apply closed_qual_monotone with (b':=0) (f':=(length ([]: tenv))) (l':=(length Σ')) in H24; eauto.
-           apply closed_qual_monotone with (b':=0) (f':=(length ([]: tenv))) (l':=(length Σ')) in H51; eauto.
+           apply closed_qual_monotone with (b':=1) (f':=(length ([]: tenv))) (l':=(length Σ')) in H51; eauto.
            (* apply closed_qual_qqplus_inv in H41. intuition. *)
-           constructor. all: unfold openq. all: erewrite @closed_qual_open_id with (l:=(length Σ')). erewrite @closed_qual_open_id with (l:=(length Σ')). repeat rewrite <- qlub_assoc. rewrite @qlub_commute with (d1:=(just_loc (length Σ))) (d2:=ε3). apply subqual_refl.
-           all: repeat apply closed_qual_qlub; eauto.
-           all: apply just_loc_closed; lia.
+           constructor. all: unfold openq. all: repeat erewrite open_qual_qlub_dist; repeat erewrite @closed_qual_open_id with (d:=ε1) (l:=(length Σ')); repeat erewrite @closed_qual_open_id with (d:=ε2) (l:=(length Σ')); eauto. erewrite @closed_qual_open_id with (l:=(length Σ')); eauto. repeat rewrite <- qlub_assoc. rewrite @qlub_commute with (d1:=(just_loc (length Σ))). apply subqual_refl. apply just_loc_closed; lia.
+           repeat apply closed_qual_qlub; eauto. eapply closed_qual_open'; eauto. 
+           apply just_loc_closed; lia.
         -- apply has_type_filter in H0. apply qqplus_bound. apply openq_subqual. apply qqplus_bound.
            1, 3 : eapply subqual_trans; eauto; apply extends_ldom; auto. all : apply just_loc_ldom; lia.
         -- pose proof (has_type_filter H0). apply has_type_filter_eff in H,H0. apply qqplus_bound. apply openq_subqual. apply qqplus_bound.
            eapply subqual_trans; eauto; apply extends_ldom; auto. 1,3: apply just_loc_ldom; lia.
-           unfold openq. erewrite @closed_qual_open_id with (b:=0); auto. apply closed_qual_subqual_ldom. apply extends_length in H26. apply @closed_qual_monotone with (b:=0) (f:=0) (l:=length Σ); auto. all: repeat apply closed_qual_qlub; eauto.
+           unfold openq. apply extends_length in H26. repeat erewrite open_qual_qlub_dist. repeat eapply qlub_bound. 1,2: erewrite @closed_qual_open_id with (b:=0); eauto. all: apply closed_qual_subqual_ldom; eapply closed_qual_monotone; eauto. eapply closed_qual_open'; eauto.
         -- apply saturated_qqplus; auto. apply saturated_openq. apply saturated_qqplus; auto.
            apply saturated_empty_tenv. eapply closed_qual_monotone; eauto. lia. eapply weaken_store_saturated; eauto.
         -- apply saturated_qqplus; auto. apply saturated_openq. apply saturated_qqplus; auto.
            apply saturated_empty_tenv. eapply closed_qual_monotone; eauto. lia. eapply weaken_store_saturated; eauto.
-           apply saturated_empty_tenv. unfold openq.
-erewrite @closed_qual_open_id with (b:=0); auto. all: repeat apply closed_qual_qlub; eauto.
+           apply saturated_empty_tenv. unfold openq. eapply closed_qual_open'; eauto.
+           all: repeat apply closed_qual_qlub. 
+           1,2: eapply closed_qual_monotone; eauto. eauto. 
     + (*  t t2 -> t' t2  *)
       apply has_type_closed in H0 as Hcl. intuition.
       specialize (H23 σ H13). destruct H23 as [t1' [σ' HH5]]. exists (tapp t1' t2). exists σ'. intuition. apply step_c_app_l. intuition.
@@ -3426,14 +3427,15 @@ erewrite @closed_qual_open_id with (b:=0); auto. all: repeat apply closed_qual_q
         -- apply has_type_filter in H0. apply openq_subqual. eapply subqual_trans; eauto. apply extends_ldom. auto.
            inversion H15. subst. assert (length Σ <= length Σ'). lia.
            rewrite openq_u_distribute1. apply qqplus_bound.
-           unfold openq. erewrite @closed_qual_open_id with (b:=0); auto. eapply closed_qual_subqual_ldom. replace (length ([]: tenv)) with 0 in *; auto. 1,2: repeat apply closed_qual_qlub. 1-6: eapply closed_qual_monotone; eauto.
-           apply just_loc_ldom. lia.
+           unfold openq. eapply closed_qual_subqual_ldom. replace (length ([]: tenv)) with 0 in *; auto. eapply @closed_qual_open' with (b:=0); auto. 2: apply closed_qual_subqual_ldom.
+           repeat apply closed_qual_qlub. 1-3: eapply closed_qual_monotone; eauto.
+           apply just_loc_closed. lia.
         -- rewrite openq_u_distribute1. apply saturated_qqplus; auto. apply saturated_openq. apply saturated_empty_tenv.
            eapply closed_qual_monotone; eauto. lia. eapply weaken_store_saturated; eauto.
         -- rewrite openq_u_distribute1. apply saturated_qqplus; auto. apply saturated_openq. apply saturated_empty_tenv.
            eapply closed_qual_monotone; eauto. lia. eapply weaken_store_saturated; eauto.
            apply saturated_empty_tenv. inversion H15. subst.
-           unfold openq. erewrite @closed_qual_open_id with (b:=0); auto. replace (length ([]: tenv)) with 0 in *; auto. 1,2: repeat apply closed_qual_qlub. 1-6: eapply closed_qual_monotone; eauto.
+           unfold openq. replace (length ([]: tenv)) with 0 in *; auto. eapply @closed_qual_open' with (b:=0); auto. repeat apply closed_qual_qlub. 1-3: eapply closed_qual_monotone; eauto.
   - (* tlet *)
     right. subst. intuition.
     apply has_type_closed in H7 as HH. intuition. apply has_type_closed in H8 as HH0. intuition.
@@ -3661,7 +3663,7 @@ erewrite @closed_qual_open_id with (b:=0); auto. all: repeat apply closed_qual_q
     eapply closed_qual_monotone. apply closed_qual_qlub. 1-6: eauto.
     1,2: apply closed_qual_subqual_ldom. 3,4: apply saturated_empty_tenv.
     all: apply closed_qual_qlub; eauto.
-    Unshelve. exact 0.
+    Unshelve. exact 0. exact 0.
 Qed.
 
 Ltac solve_step_deterministic :=

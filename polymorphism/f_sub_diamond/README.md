@@ -1,13 +1,43 @@
 # The $\mathsf{F}_{<:}^{\diamond}$-Calculus: Bounded Type-and-Qualifier Polymorphism
 
+## Overview
+
+### Mechanized Examples from the Paper
+
+* [`examples.v`](examples.v): Basic examples from Section 2 and 5.
+* [`examples_cell_opaque.v`](examples_cell_opaque.v) -- Example: Demonstrating opaque Church encodings for scope transfers on a single Cell type.
+* [`examples_pairs.v`](examples_pairs.v): Data type examples from Section 2, including Figure 1 (counter, `Section OpaquePairEndToEnd`), transparent vs. opaque pairs, and conversion of the former into the latter.
+
+### Tips to get Started
+
+* The mechanization uses locally nameless, where free variables are deBruijn *levels* (prefixed with `$`) and bound variables are deBruijn *indices* (prefixed with `#`). Numeric store locations are prefixed with `&`.
+* Study the notations for qualifiers in [`qualifiers.v`](qualifiers.v).
+* Study the type system and definitions at the top of the main proof file [`f_sub_diamond.v`](f_sub_diamond.v).
+
+## Compilation
+
+To generate/update the `CoqMakefile` from `_CoqProject`:
+
+`coq_makefile -f _CoqProject -o CoqMakefile`
+
+Then, to compile/check all proof scripts listed in `_CoqProject`:
+
+`make -f CoqMakefile all`
+
+Compatibility tested with Coq `8.16.0`.
+
+Compilation takes approximately 6 minutes on an Apple M1 Pro CPU.
+
 ## Variant
 
-This version extends the [base](../lambda_diamond_base) $\lambda^{\diamond}$-calculus with bounded
+This version extends the [base](lambda_diamond_base) $\lambda^{\diamond}$-calculus with bounded
 type-and-qualifier polymorphism, akin to System $F_{<:}$.
 
 ### Limitations of this Variant
 
-* Function/type applications can be dependent on the argument, but currently not on the self-qualifier of the function/universal type.
+* Function/type applications can be fully dependent on the argument, but currently not on the self-qualifier of the function/universal type.
+Their occurrence remains "shallow", i.e., they may appear in the immediate codomain qualifier, but not deeply in the codomain type.
+However, this does not inhibit any of the paper's examples.
 
 ## Mechanization Outline ([f_sub_diamond.v](f_sub_diamond.v))
 
@@ -45,7 +75,9 @@ the type and qualifier in signatures.
 ### Main Files
 
 * [`f_sub_diamond.v`](f_sub_diamond.v) -- The $\mathsf{F}_{<:}^{\diamond}$-calculus: definitions and metatheory (type safety theorem and preservation of separation).
-* [`examples.v`](examples.v) -- Mechanized tour of the calculus.
+* [`examples.v`](examples.v) -- Basic mechanized examples of the calculus from the paper.
+* [`examples_cell_opaque.v`](examples_cell_opaque.v) -- Example: Demonstrating opaque Church encodings for scope transfers on a single Cell type.
+* [`examples_pairs.v`](examples_pairs.v) -- Examples: Church encodings (transparent and opaque) of pairs and usage examples from the paper.
 
 ### Support Libraries
 * [`examples_infra.v`](examples_infra.v) -- Auxiliary definitions and tactics used in [`examples.v`](examples.v).
@@ -60,15 +92,3 @@ the type and qualifier in signatures.
 * [`FSetNotin.v`](FSetNotin.v)
 * [`FiniteSets.v`](FiniteSets.v)
 * [`ListFacts.v`](ListFacts.v)
-
-## Compilation
-
-To generate/update the `CoqMakefile` from `_CoqProject`:
-
-`coq_makefile -f _CoqProject -o CoqMakefile`
-
-Then, to compile/check all proof scripts listed in `_CoqProject`:
-
-`make -f CoqMakefile all`
-
-Compatibility tested with Coq `8.16.0`.

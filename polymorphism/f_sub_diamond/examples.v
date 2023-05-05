@@ -26,6 +26,8 @@ Local Open Scope qualifiers.
 
 (* ### Examples ### *)
 
+(* We make use of a few notations to make function and universal types more palatable: *)
+
 Notation " { a | b } ==> { c | d }"  := (TFun b d a c)
 (at level 10, format "'[' '[hv' '{' a  '/' '|'  b '}' ']' '/  '  '==>'  '[hv' '{' c  '/' '|'  d '}' ']' ']'").
 
@@ -41,6 +43,7 @@ Notation "∀.{ c | d }" := (TAll {♦} d ⊤ c) (at level 10, only parsing).
 
 Section QPoly.
 
+  (* λx.x *)
   Example idfun := (ttabs (tabs #1)).
 
   (* ∀X<:⊤^♦. ((x : X^♦) -> X^x)^∅ *)
@@ -51,6 +54,7 @@ Section QPoly.
     eapply t_var; ccrush.
   Qed.
 
+  (* id(unit): Unit^∅*)
   Example idfun_app1 : has_type [] {♦} [] (tapp (ttapp idfun) tunit) TUnit ∅.
     dep_app (∅) (∅) #!1.
     eapply t_app_fresh with (d1':=∅) (df':=∅); ccrush.
@@ -63,6 +67,7 @@ Section QPoly.
     apply stp_refl; ccrush. apply stp_refl; ccrush. apply qs_sq; ccrush. all : crush.
   Qed.
 
+  (* id(new Ref(unit)): Ref[Unit]^{♦} *)
   Example idfun_app2 : has_type [] {♦} [] (tapp (ttapp idfun) (tref tunit)) (TRef ∅ TUnit) {♦}.
     change_qual (openq ∅ {♦} #!1).
     replace (TRef ∅ TUnit) with ((TRef ∅ TUnit) <~ᵀ TUnit ~ ∅; (TRef ∅ TUnit) ~ {♦}); try solve [opening; ccrush].
@@ -78,9 +83,10 @@ Section QPoly.
     * change_qual ({♦} ⊔ ∅). apply t_ref; auto.
   Qed.
 
+  (* The fakeid function *)
   Section FakeId.
+    (* assume a general allocation primitive *)
     Variable (alloc : tm).
-    (* exercise for the reader: make alloc a proper object-language type abstraction *)
     Context (t_alloc : forall {Γ φ Σ T},
                        closed_ty 0 (‖Γ‖) (‖Σ‖) T ->
                        has_type Γ φ Σ alloc T {♦})
@@ -101,273 +107,300 @@ Section QPoly.
 
   End FakeId.
 
-  (** Church (or rather: Boehm-Berarducci) encodings *)
-  Section Church.
-
-    Section Bool.
-      (* Church true, respectively pi1: ΛA.ΛB.λa:A.λb:B.a *)
-      Example church_true := (ttabs (ttabs (tabs (tabs #3)))).
-      (* Type for pi1 := ∀A^a<:Top^♦. (∀B^b<:Top^♦. ((x:A^a) -> ((y:B^b) -> A^x)^{x})^a,b)^a. *)
-      Example church_true_T := ∀.{ ∀.{ { #3 | #!3 } ==> {{#3 | #!3} ==> {#7 | #! 3} | #! 1} | #!1 ⊔ #!3 } | #!1 } .
-      (* Church false, respectively pi2: ΛA.ΛB.λa:A.λb:B.b  *)
-      Example church_false := (ttabs (ttabs (tabs (tabs #1)))).
-      (* Type for pi2 := ∀A^a<:Top^♦. (∀B^b<:Top^♦. ((x:A^a) -> ((y:B^b) -> B^y)^{x})^a,b)^a. *)
-      Example church_false_T := ∀.{ ∀.{ { #3 | #!3 } ==> {{#3 | #!3} ==> {#5 | #! 1} | #! 1} | #!1 ⊔ #!3 } | #!1 }.
-
-      Variables (Γ : tenv) (φ : qual) (Σ : senv).
-      Context (phiwf : closed_qual 0 (‖Γ‖) (‖Σ‖) φ).
-
-      Example church_true_ht : has_type Γ φ Σ church_true church_true_T ∅.
-        intros. unfold church_true. unfold church_true_T.
-        apply t_tabs; ccrush.
-        apply t_tabs; ccrush.
-        apply t_abs; ccrush.
-        apply t_abs; ccrush.
-        eapply t_var; ccrush.
-      Qed.
-
-      Example church_false_ht : has_type Γ φ Σ church_false church_false_T ∅.
-        intros. unfold church_false. unfold church_false_T.
-        apply t_tabs; ccrush.
-        apply t_tabs; ccrush.
-        apply t_abs; ccrush.
-        apply t_abs; ccrush.
-        eapply t_var; ccrush.
-      Qed.
-
-    End Bool.
-
-    Section Pair.
-
-      Variables (Γ : tenv) (φ : qual) (Σ : senv).
-      Context (phiwf : closed_qual 0 (‖Γ‖) (‖Σ‖) φ).
-
-      (* Church pairs *)
-      (* Pair introduction: ΛA.ΛB.λx:A.λy:B.ΛC.λf.f x y *)
-      Example pair := (ttabs (ttabs (tabs (tabs (ttabs (tabs (tapp (tapp #1 #7) #5))))))).
-      (* Pair destructors *)
-      Example fst := (ttabs (ttabs (tabs (tapp (ttapp #1) (tabs (tabs #3)))))).
-      Example snd := (ttabs (ttabs (tabs (tapp (ttapp #1) (tabs (tabs #1)))))).
-
-      (* Version constraining the elimination to {a,b}, effectively restricting it to the projections.
-        Pair[A^a,B^b] := ∀C^c<:⊤^♦. (((x : A^a) -> ((y : B^b) -> C^c)^x)^{} -> C^c)^c,a,b *)
-      Example TPair1 A a a' B b b' := ∀.{ {{A | a} ==> {{B | b} ==> { #5 | #!5 } | #!1} | ∅ } ==> {#3 | #!3} | #!1 ⊔ a' ⊔ b' }.
-
-      (* pair : (∀A^a<:⊤^♦. (∀B^b<:⊤^♦. ( (x : A^a) -> ((y : B^b) -> (Pair1[A^x,B^y])^x,y)^x))^a,b)^∅ *)
-      Example t_pair1_ :
-        has_type [] ∅ [] pair (∀.{ ∀.{ {#3 | #!3} ==> {{#3 | #!3 } ==> {TPair1 #9 #!5 #!5 #9 #!5 #!3 | (#!3 ⊔ #!1) } | #!1 }  | #!1 ⊔ #!3 }  | #!1 }) ∅.
-        unfold pair.
-        apply t_tabs; ccrush. unfold TPair1. ccrush. (* 0/1*)
-        apply t_tabs; ccrush. (* 2/3 *)
-        apply t_abs; ccrush. (* 4/5 *)
-        apply t_abs; ccrush. (* 6/7 *)
-        apply t_tabs; ccrush. (* 8/9 *)
-        apply t_abs; ccrush.  (* 10/11 *)
-        change_qual (openq $!5 $!7 $!9).
-        change_type (open_ty TUnit (∅) ($3) $!7 $9).
-        apply t_app; ccrush.
-        * change_qual (openq $!11 $!5 #!1).
-          change_type (open_ty TUnit (∅) $1 $!5 ({$ 3 | $! 7} ==> {$ 9 | $! 9})).
-          apply t_app; ccrush.
-          + eapply t_var; ccrush.
-          + eapply t_sub. eapply t_var; ccrush.
-            apply stp_refl; ccrush. apply qs_sq; ccrush. all : ccrush.
-        * eapply t_var; ccrush.
-      Qed.
-
-      (* allows the component qualifier parameters to overlap *)
-      (* pair : (∀A^a<:⊤^♦. (∀B^b<:⊤^{a,♦}. ( (x : A^a) -> ((y : B^b) -> (Pair1[A^x,B^y])^x,y)^x))^a,b)^∅ *)
-      Example t_pair1__ :
-        has_type [] ∅ [] pair (∀.{ ∀<:{ #♦1 }.{ {#3 | #!3} ==> {{#3 | #!3 } ==> {TPair1 #9 #!5 #!5 #9 #!5 #!3 | (#!3 ⊔ #!1) } | #!1 }  | #!1 ⊔ #!3 }  | #!1 }) ∅.
-        unfold pair.
-        apply t_tabs; ccrush. unfold TPair1. ccrush. (* 0/1*)
-        apply t_tabs; ccrush. (* 2/3 *)
-        apply t_abs; ccrush. (* 4/5 *)
-        apply t_abs; ccrush. (* 6/7 *)
-        apply t_tabs; ccrush. (* 8/9 *)
-        apply t_abs; ccrush.  (* 10/11 *)
-        change_qual (openq $!5 $!7 $!9).
-        change_type (open_ty TUnit (∅) ($3) $!7 $9).
-        apply t_app; ccrush.
-        * change_qual (openq $!11 $!5 #!1).
-          change_type (open_ty TUnit (∅) $1 $!5 ({$ 3 | $! 7} ==> {$ 9 | $! 9})).
-          apply t_app; ccrush.
-          + eapply t_var; ccrush.
-          + eapply t_sub. eapply t_var; ccrush.
-            apply stp_refl; ccrush. apply qs_sq; ccrush. all : ccrush.
-        * eapply t_var; ccrush.
-      Qed.
-
-      Example t_pair1 :
-        has_type Γ φ Σ pair (∀.{ ∀.{ {#3 | #!3} ==> {{#3 | #!3 } ==> {TPair1 #9 #!5 #!5 #9 #!5 #!3 | (#!3 ⊔ #!1) } | #!1 }  | #!1 ⊔ #!3 }  | #!1 }) ∅.
-        eapply weaken'. eapply weaken_store. apply t_pair1_. all : auto.
-      Qed.
-
-      Example t_pair1' :
-        has_type Γ φ Σ pair (∀.{ ∀<:{ #♦1 }.{ {#3 | #!3} ==> {{#3 | #!3 } ==> {TPair1 #9 #!5 #!5 #9 #!5 #!3 | (#!3 ⊔ #!1) } | #!1 }  | #!1 ⊔ #!3 }  | #!1 }) ∅.
-        eapply weaken'. eapply weaken_store. apply t_pair1__. all : auto.
-      Qed.
-
-      (* Version implicitly polymorphic over the elimination's captured variables, as in the paper:
-          Pair[A^a,B^b] := ∀C^c<:⊤^♦. ((f(x : A^a) -> ((y : B^b) -> C^c)^f,x)^{a,b,♦} -> C^c)^c,a,b *)
-      Example TPair2 A a a' a'' B b b' b'' := ∀.{ {{A | a} ==> {{B | b} ==> { #5 | #!5} | #!0 ⊔ #!1} | a' ⊔ b' ⊔ {♦}} ==> {#3 | #!3 } | #!1 ⊔ a'' ⊔ b'' }.
-
-      (* pair : (∀A^a<:⊤^♦. (∀B^b<:⊤^♦. ( (x : A^a) -> ((y : B^b) -> (Pair2[A^x,B^y])^x,y)^x))^a,b)^∅ *)
-      Example t_pair2_ :
-        has_type [] ∅ [] pair (∀.{ ∀.{ {#3 | #!3} ==> {{#3 | #!3 } ==> {TPair2 #9 #!5 #!7 #!5 #9 #!5 #!5 #!3 | (#!3 ⊔ #!1) } | #!1 }  | #!1 ⊔ #!3 }  | #!1 }) ∅.
-        unfold pair.
-        apply t_tabs; ccrush. unfold TPair2. ccrush. (* 0/1*)
-        apply t_tabs; ccrush. (* 2/3 *)
-        apply t_abs; ccrush. (* 4/5 *)
-        apply t_abs; ccrush. (* 6/7 *)
-        apply t_tabs; ccrush. (* 8/9 *)
-        apply t_abs; ccrush.  (* 10/11 *)
-        change_qual (openq ($!11 ⊔ $!5) $!7 $!9).
-        change_type (open_ty TUnit (∅) ($3) $!7 $9).
-        apply t_app; ccrush.
-        * change_qual (openq $!11 $!5 (#!0 ⊔ #!1)).
-          change_type (open_ty TUnit (∅) $1 $!5 ({$ 3 | $! 7} ==> {$ 9 | $! 9})).
-          apply t_app; ccrush.
-          + eapply t_var; ccrush.
-          + eapply t_sub. eapply t_var; ccrush.
-            apply stp_refl; ccrush. apply qs_sq; ccrush. all : ccrush.
-        * eapply t_var; ccrush.
-      Qed.
-
-      Example t_pair2 :
-        has_type Γ φ Σ pair (∀.{ ∀.{ {#3 | #!3} ==> {{#3 | #!3 } ==> {TPair2 #9 #!5 #!7 #!5 #9 #!5 #!5 #!3 | (#!3 ⊔ #!1) } | #!1 }  | #!1 ⊔ #!3 }  | #!1 }) ∅.
-        eapply weaken'. eapply weaken_store. apply t_pair2_. all : auto.
-      Qed.
-
-      (* Assert that the projection functions are compatible with each pair type *)
-      (* fst : (∀A^a<:⊤^♦. (∀B^b<:⊤^♦. (Pair1[A^a,B^b]^{♦} -> A^a)^a,b)^a)^∅ *)
-      Example t_fst1 :
-        has_type [] ∅ [] fst (∀.{ ∀.{ {TPair1 #5 #!5 #!5 #5 #!5 #!3 | {♦} } ==> { #5 | #!5 } | #!1 ⊔ #!3 } | #!1 }) ∅.
-        unfold fst.
-        apply t_tabs; ccrush. unfold TPair1. ccrush.
-        apply t_tabs; ccrush.
-        apply t_abs; ccrush.
-        change_qual (openq (qset false (union (singleton 1) (singleton 3)) {}N {}N) (∅) $!1).
-        change_type (open_ty TUnit (∅) ({$ 1 | $! 1} ==> {{$ 3 | $! 3} ==> {$1 | $! 1} | #!1}) (∅) $1).
-        apply t_app; ccrush.
-        * change_qual (openq ($!5) $!1 (qset false (union (singleton 1) (singleton 3)) (singleton 1) {}N)).
-          change_type (open_ty TUnit ∅ $1 $!1 ({{$ 1 | $! 1} ==> {{$ 3 | $! 3} ==> {# 5 | #! 5} | #! 1} | ∅} ==> {# 3 | #! 3})).
-          eapply t_tapp_fresh with (d1':=$♦1) (df':=$♦5) ; ccrush.
-          eapply t_sub.
-          eapply t_var; ccrush.
-          apply s_all. ccrush. ccrush.
-          apply qs_sq; ccrush.
-          eapply s_tvar_trans; ccrush. cleanup. apply stp_refl; ccrush. apply qs_sq; ccrush.
-          all : ccrush.
-        * eapply t_sub with (T1 := {$ 1 | $! 1} ==> {{$ 3 | $! 3} ==> { $1 | #!3 } | #! 1}) (d1:= ∅). 3,4: ccrush.
-          - apply t_abs; ccrush.
-            apply t_abs; ccrush.
-            eapply t_var; ccrush.
-          - apply s_fun; ccrush.
-            apply stp_refl; ccrush. apply qs_sq; ccrush.
-            apply s_fun; ccrush. apply qs_sq; ccrush.
-            apply stp_refl; ccrush. apply qs_sq; ccrush.
-            apply stp_refl; ccrush. eapply qs_qvar; ccrush.
-      Qed.
-
-      (* snd : (∀A^a<:⊤^♦. (∀B^b<:⊤^♦. (Pair1[A^a,B^b]^{♦} -> B^b)^a,b)^a)^∅ *)
-      Example t_snd1 :
-        has_type [] ∅ [] snd (∀.{ ∀.{ {TPair1 #5 #!5 #!5 #5 #!5 #!3 | {♦} } ==> { #3 | #!3 } | #!1 ⊔ #!3 } | #!1 }) ∅.
-        unfold snd.
-        apply t_tabs; ccrush. unfold TPair1. ccrush.
-        apply t_tabs; ccrush.
-        apply t_abs; ccrush.
-        change_qual (openq (qset false (union (singleton 1) (singleton 3)) {}N {}N) (∅) $!3).
-        change_type (open_ty TUnit (∅) ({$ 1 | $! 1} ==> {{$ 3 | $! 3} ==> {$3 | $! 3} | #!1}) (∅) $3).
-        apply t_app; ccrush.
-        * change_qual (openq ($!5) $!3 (qset false (union (singleton 1) (singleton 3)) (singleton 1) {}N)).
-          change_type (open_ty TUnit ∅ $3 $!3 ({{$ 1 | $! 1} ==> {{$ 3 | $! 3} ==> {# 5 | #! 5} | #! 1} | ∅} ==> {# 3 | #! 3})).
-          eapply t_tapp_fresh with (d1':=$♦3) (df':=$♦5) ; ccrush.
-          eapply t_sub.
-          eapply t_var; ccrush.
-          apply s_all. ccrush. ccrush.
-          apply qs_sq; ccrush.
-          eapply s_tvar_trans; ccrush. cleanup. apply stp_refl; ccrush. apply qs_sq; ccrush.
-          all : ccrush.
-        * eapply t_sub with (T1 := {$ 1 | $! 1} ==> {{$ 3 | $! 3} ==> { $3 | #!1 } | #! 1}) (d1:= ∅). 3,4: ccrush.
-          - apply t_abs; ccrush.
-            apply t_abs; ccrush.
-            eapply t_var; ccrush.
-          - apply s_fun; ccrush.
-            apply stp_refl; ccrush. apply qs_sq; ccrush.
-            apply s_fun; ccrush. apply qs_sq; ccrush.
-            apply stp_refl; ccrush. apply qs_sq; ccrush.
-            apply stp_refl; ccrush. eapply qs_qvar; ccrush.
-      Qed.
-
-      (* fst : (∀A^a<:⊤^♦. (∀B^b<:⊤^♦. (Pair2[A^a,B^b]^{♦} -> A^a)^a,b)^a)^∅ *)
-      Example t_fst2 :
-        has_type [] ∅ [] fst (∀.{ ∀.{ {TPair2 #5 #!5 #!5 #!5 #5 #!5 #!3 #!3 | {♦} } ==> { #5 | #!5 } | #!1 ⊔ #!3 } | #!1 }) ∅.
-        unfold fst.
-        apply t_tabs; ccrush. unfold TPair2. ccrush.
-        apply t_tabs; ccrush.
-        apply t_abs; ccrush.
-        change_qual (openq ($!1⊔$!3) (∅) $!1).
-        change_type (open_ty TUnit (∅) ({$ 1 | $! 1} ==> {{$ 3 | $! 3} ==> {$1 | $! 1} | #!0 ⊔ #!1}) (∅) $1).
-        eapply t_app_fresh with (d1':=∅) (df':=$♦1⊔$♦3); ccrush.
-        * change_qual (openq ($!5) $!1 (qset false (union (singleton 1) (singleton 3)) (singleton 1) {}N)).
-          change_type (open_ty TUnit ∅ $1 $!1 ({{$ 1 | $! 1} ==> {{$ 3 | $! 3} ==> {# 5 | #! 5} | #!0 ⊔ #!1} | {♦}} ==> {# 3 | #! 3})).
-          eapply t_tapp_fresh with (d1':=$♦1) (df':=$♦5) ; ccrush.
-          eapply t_sub.
-          eapply t_var; ccrush.
-          apply s_all. ccrush. ccrush.
-          apply qs_sq; ccrush.
-          eapply s_tvar_trans; ccrush. cleanup.
-          apply s_fun. ccrush. ccrush. apply qs_sq; ccrush.
-          apply stp_refl; ccrush. apply qs_sq; ccrush.
-          apply stp_refl; ccrush. apply qs_sq; ccrush.
-          all : ccrush.
-        * eapply t_sub with (T1 := {$ 1 | $! 1} ==> {{$ 3 | $! 3} ==> { $1 | #!3 } | #! 1}) (d1:= ∅). 3,4: ccrush.
-          - apply t_abs; ccrush.
-            apply t_abs; ccrush.
-            eapply t_var; ccrush.
-          - apply s_fun; ccrush.
-            apply stp_refl; ccrush. apply qs_sq; ccrush.
-            apply s_fun; ccrush. apply qs_sq; ccrush.
-            apply stp_refl; ccrush. apply qs_sq; ccrush.
-            apply stp_refl; ccrush. eapply qs_qvar; ccrush.
-      Qed.
-
-      (* snd : (∀A^a<:⊤^♦. (∀B^b<:⊤^♦. (Pair[A^a,B^b]^{♦} -> B^b)^a,b)^a)^∅ *)
-      Example t_snd2 :
-        has_type [] ∅ [] snd (∀.{ ∀.{ {TPair2 #5 #!5 #!5 #!5 #5 #!5 #!3 #!3 | {♦} } ==> { #3 | #!3 } | #!1 ⊔ #!3 } | #!1 }) ∅.
-        unfold snd.
-        apply t_tabs; ccrush. unfold TPair2. ccrush.
-        apply t_tabs; ccrush.
-        apply t_abs; ccrush.
-        change_qual (openq ($!1⊔$!3) (∅) $!3).
-        change_type (open_ty TUnit (∅) ({$ 1 | $! 1} ==> {{$ 3 | $! 3} ==> {$3 | $!3} | #!0 ⊔ #!1}) (∅) $3).
-        eapply t_app_fresh with (d1':=∅) (df':=$♦1⊔$♦3); ccrush.
-        * change_qual (openq ($!5) $!3 (qset false (union (singleton 1) (singleton 3)) (singleton 1) {}N)).
-          change_type (open_ty TUnit ∅ $3 $!3 ({{$ 1 | $! 1} ==> {{$ 3 | $! 3} ==> {# 5 | #! 5} | #!0 ⊔ #!1} | {♦}} ==> {# 3 | #! 3})).
-          eapply t_tapp_fresh with (d1':=$♦3) (df':=$♦5) ; ccrush.
-          eapply t_sub.
-          eapply t_var; ccrush.
-          apply s_all. ccrush. ccrush.
-          apply qs_sq; ccrush.
-          eapply s_tvar_trans; ccrush. cleanup.
-          apply s_fun. ccrush. ccrush. apply qs_sq; ccrush.
-          apply stp_refl; ccrush. apply qs_sq; ccrush.
-          apply stp_refl; ccrush. apply qs_sq; ccrush.
-          all : ccrush.
-        * eapply t_sub with (T1 := {$ 1 | $! 1} ==> {{$ 3 | $! 3} ==> { $3 | #!1 } | #! 1}) (d1:= ∅). 3,4: ccrush.
-          - apply t_abs; ccrush.
-            apply t_abs; ccrush.
-            eapply t_var; ccrush.
-          - apply s_fun; ccrush.
-            apply stp_refl; ccrush. apply qs_sq; ccrush.
-            apply s_fun; ccrush. apply qs_sq; ccrush.
-            apply stp_refl; ccrush. apply qs_sq; ccrush.
-            apply stp_refl; ccrush. eapply qs_qvar; ccrush.
-      Qed.
-
-    End Pair.
-
-  End Church.
-
 End QPoly.
+
+
+Section DerivedSyntax.
+
+  (** Sequential composition *)
+  Definition seq (t1 t2 : tm): tm := (tapp (tapp (tabs (tabs #1)) t1) t2).
+
+  Lemma t_seq : forall Γ φ Σ t1 T1 q1 t2 T2 q2,
+      has_type Γ φ Σ t1 T1 q1 ->
+      has_type Γ φ Σ t2 T2 q2 ->
+      ♦∉ q1 ->
+      ♦∉ q2 ->
+      senv_saturated Σ q1 ->
+      senv_saturated Σ q2 ->
+      has_type Γ φ Σ (seq t1 t2) T2 q2.
+  Proof.
+    intros. unfold seq.
+    change_qual (openq ∅ q2 #!1).
+    change_type (open_ty TUnit ∅ T2 q2 T2).
+    apply t_app with (T1:=T2); eauto; ccrush.
+    * change_qual (openq ∅ q1 ∅).
+      change_type (open_ty TUnit ∅ T1 q1 ({T2 | q2} ==> {T2 | #! 1})).
+      eapply t_app with (T1:=T1); ccrush.
+      - apply t_abs; ccrush.
+        apply t_abs; ccrush.
+        eapply t_var; ccrush.
+  Qed.
+
+  (* Let bindings as macros for abstraction and application. Due to this encoding, the let-bound variable's
+     deBruijn index is #1, since the implicit function self reference is bound to #0.
+  *)
+  Definition tlet (t1 t2 : tm): tm := (tapp (tabs t2) t1).
+
+  (* the typing rule combines the tabs and t_app_fresh cases (we could also have a non-fresh version) *)
+  Lemma t_let_fresh : forall Γ φ df df' Σ t1 T1 q1 q1' t2 T2 q2,
+    closed_tm 2 (length Γ) (length Σ) t2 ->
+    closed_ty 0 (‖Γ‖) (‖Σ‖) (TFun q1 q2 T1 T2) ->
+    closed_qual 2 (length Γ) (length Σ) q2 ->
+    closed_qual 0 (length Γ) (length Σ) df ->
+    has_type Γ φ Σ t1 T1 q1 ->
+    q1 ⊑ q1' ->
+    df ⊑ df' ->
+    q1' ⊑ φ ->
+    df' ⊑ φ ->
+    df ⊑ φ ->
+    (q2 <~ᵈ ∅ ; ∅) ⊑ φ ->
+    ♦∉ df ->
+    senv_saturated Σ df ->
+    saturated Γ Σ df' ->
+    saturated Γ Σ q1' ->
+    senv_saturated Σ (q2 <~ᵈ ∅ ; ∅) ->
+    not_free 0 T2 ->
+    (♦∈ q1 -> not_free 1 T2) ->
+    has_type (bind_tm(false, T1, (df' ⋒ q1')) :: bind_tm(true, {T1 | df' ⋒ q1'} ==> {T2 | q2}, df):: Γ) (df ⊔ $!(S (length Γ)) ⊔ {♦}) Σ (open_tm' Γ t2) (open_ty' Γ T2) (openq' Γ q2) ->
+    has_type Γ φ Σ (tlet t1 t2) (T2 <~ᵀ TUnit ~ ∅ ; T1 ~ q1) (q2 <~ᵈ df ; q1).
+  Proof.
+    intros. unfold tlet. specialize (has_type_closed H3). intuition.
+    eapply t_app_fresh with (d1':=q1') (df':=df'); ccrush.
+    apply t_abs; ccrush. constructor; ccrush. inversion H0; subst. auto.
+    unfold_open in H17. simpl in H17.
+    eapply @weaken_flt with (φ:=df ⊔ $! (S (length Γ)) ⊔ {♦}); ccrush.
+  Qed.
+
+  Lemma open_tlet : forall {k t t1 t2}, open_rec_tm k t (tlet t1 t2) = (tlet (open_rec_tm k t t1) (open_rec_tm (S (S k)) t t2)).
+  Proof.
+    intros. unfold tlet. simpl. auto.
+  Qed.
+
+End DerivedSyntax.
+
+Section Closures.
+  (* Two examples that Scala capture types would conflate *)
+
+  (* { val y = new Ref(unit); { x => y } } *)
+  Example escaping_closure := (tlet (tref tunit) (tabs #3)).
+
+  (* escaping_closure : f(Unit => Ref[Unit]^f)^{♦} *)
+  Example ret_const : has_type [] {♦} [] escaping_closure ({TUnit | ∅}  ==> {TRef ∅ TUnit | #!0}) {♦}.
+  Proof.
+    unfold escaping_closure.
+    change_qual (openq ∅ ({♦} ⊔ ∅) #!1).
+    change_type (({TUnit | ∅} ==> {TRef ∅ TUnit | #! 0}) <~ᵀ TUnit ~ ∅; TRef ∅ TUnit ~ ({♦} ⊔ ∅)).
+    eapply t_let_fresh with (q1':={♦}) (df':=∅); try solve [ccrush].
+    * apply t_ref; ccrush.
+    * cleanup. apply t_abs; ccrush.
+      (* now use subtyping for the f (= $2) self-ref abstraction *)
+      eapply t_sub. eapply t_var; ccrush. 2,3 : ccrush.
+      apply stp_refl; ccrush.
+      (* x <: x,f <: f by qs_self in this context *)
+      eapply qs_trans with (d2:=$!1 ⊔ $!2).
+      + (* by ordinary set inclusion *) apply qs_sq; ccrush.
+      + (* by qs_self abstraction rule *) eapply qs_self; ccrush.
+  Qed.
+
+  (* { () => new Ref() } : Unit^∅ => Ref[Unit]^{♦} *)
+  Example ret_fresh : has_type [] ∅ [] (tabs (tref tunit)) ({TUnit | ∅}  ==> {TRef ∅ TUnit | {♦} }) ∅.
+  Proof.
+    apply t_abs; ccrush.
+    change_qual ({♦} ⊔ ∅).
+    apply t_ref; ccrush.
+    apply t_base; ccrush.
+  Qed.
+
+  (* { () => let x = new Ref() in x } : Unit^∅ => Ref[Unit]^{♦} *)
+  Example ret_fresh_let : has_type [] ∅ [] (tabs (tlet (tref tunit) #1)) ({TUnit | ∅}  ==> {TRef ∅ TUnit | {♦} }) ∅.
+  Proof.
+    apply t_abs; ccrush.
+    (* prepare dependent application *)
+    change_qual (openq ∅ {♦} #!1).
+    change_type (open_ty TUnit ∅  (TRef ∅ TUnit) {♦} (TRef ∅ TUnit)).
+    apply t_let_fresh with (q1':={♦}) (df':=∅); ccrush.
+    * change_qual ({♦} ⊔ ∅).
+      apply t_ref; ccrush.
+      apply t_base; ccrush.
+    * eapply t_var; ccrush.
+  Qed.
+
+End Closures.
+
+Section TryCatch.
+  (** Assume a Nothing type, a.k.a. the empty type, being a subtype of all types: *)
+  Variable (Nothing : ty).
+  Context (s_nothing : forall Γ Σ T q1 q2, qstp Γ Σ q1 q2 -> stp Γ Σ Nothing q1 T q2)
+          (cl_nothing : closed_ty 0 0 0 Nothing).
+  (** Assume an effects as capabilities model. The capability type for throwing (Unit-valued) exceptions is a function Unit => Nothing: *)
+  Context (CanThrow := {TUnit | ∅} ==> {Nothing | ∅})
+          (cl_canthrow : closed_ty 0 0 0 CanThrow).
+  (** Assume we can allocate fresh capabilities for throwing exceptions: *)
+  Variable (mkThrow : tm).
+  Context (t_mkThrow : has_type [] {♦} [] mkThrow CanThrow {♦}).
+
+  (** The try combinator, this one allocates a fresh capability and passes it to the given block:
+        def try_(block) = let throw = mkThrow; block(throw)
+  *)
+  Example try_ := (ttabs (tabs (tlet mkThrow (tapp #3 #1)))).
+
+  (** A possible typing for the polymorphic try combinator
+          try : (∀A^a<:⊤^♦. ((CanThrow^♦ => A^a)^♦ => A^a)^a)^∅
+    *)
+  Example try_ty_ :  has_type [] ∅ [] try_ (∀.{ {{CanThrow | {♦} } ==> {#3 | #!3} | {♦} } ==> {#3 | #!3} | #!1 }) ∅.
+  Proof.
+    intros. unfold try_.
+    apply t_tabs; ccrush. (* $1 <- A *)
+    apply t_abs; ccrush.  (* $3 <- block *)
+    change_qual (openq ($!1 ⊔ $!3)  {♦} $!1).
+    change_type (open_ty TUnit ∅ CanThrow {♦} $1).
+    eapply t_let_fresh with (q1':={♦}) (df':=$♦1 ⊔ $♦3) ; try solve [ccrush].
+    * eapply weaken'. eapply t_mkThrow. all: ccrush.
+    * cleanup.
+      change_qual (openq $!3 $!5 $!1).
+      change_type (open_ty TUnit ∅ CanThrow $!5 $1).
+      apply t_app_fresh with (d1':=$♦5) (df':=$♦3); ccrush.
+      - eapply t_var; ccrush.
+      - eapply t_var; ccrush.
+  Qed.
+
+  (* generalize to all contexts*)
+  Example try_ty : forall {Γ φ Σ}, closed_qual 0 (‖Γ‖) (‖Σ‖) φ ->
+    has_type Γ φ Σ try_ (∀.{ {{CanThrow | {♦} } ==> {#3 | #!3} | {♦} } ==> {#3 | #!3} | #!1 }) ∅.
+  Proof.
+    intros. eapply weaken'. eapply weaken_store. eapply try_ty_. all : ccrush.
+  Qed.
+
+  (* Consider this concrete context *)
+  Variable (Σ : senv).
+  Context (c1 := 0) (Γ := [bind_tm((false,TRef ∅ TUnit),∅)]) (wfS : wf_senv Σ).
+  (** This block
+        { throw => !c1 ; throw () }
+    demonstrates a legal use of capabilities. *)
+  Example nonescaping := (tabs (seq !($c1) (tapp #1 tunit))).
+
+  (** Using the nonescaping block with try is indeed well-typed. *)
+  Example nonescaping_ok : has_type Γ $!c1 Σ (tapp (ttapp try_) nonescaping) TUnit ∅.
+  Proof.
+    unfold nonescaping. subst c1.
+    change_qual (openq ∅ $!0 ∅).
+    change_type (open_ty TUnit ∅ ({CanThrow | {♦}} ==> {TUnit | ∅}) $!0 TUnit).
+    eapply t_app_fresh with (d1':=$!0) (df':=∅); ccrush.
+    * change_qual (openq ∅ ∅ #!1).
+      change_type (open_ty TUnit ∅ TUnit ∅ ({{CanThrow | {♦}} ==> {#3 | #!3} | {♦}} ==> {#3 | #!3})).
+      apply t_tapp_fresh with (d1':=∅) (df':=∅); ccrush. apply (t_sub_bound ⊤ {♦}); ccrush.
+      apply try_ty; ccrush.
+    * subst Γ. apply t_abs; ccrush.
+      apply t_seq with (T1:=TUnit) (q1:=∅); ccrush.
+      + apply t_deref with (d:=$!0); ccrush.
+        eapply t_var; ccrush.
+      + apply t_sub with (T1:=Nothing) (d1:=∅); ccrush.
+        subst CanThrow.
+        change_qual (∅ <~ᵈ $! 2; ∅).
+        change_type (Nothing <~ᵀ TUnit ~ ∅; TUnit ~ ∅).
+        eapply t_app with (T1:=TUnit); ccrush.
+        - eapply t_var; ccrush.
+        - apply t_base; ccrush.
+  Qed.
+
+  (** In contrast, this block
+          { throw => !c1 ; { () => throw () } }
+    returns a closure over the capability, which is rejected by try. *)
+  Example escaping := (tabs (seq !($c1) (tabs (tapp #3 tunit)))).
+  (** First, the type of escaping indeed leaks the capability:
+          escaping : ((c: CanThrow^{♦}) => (Unit => Unit)^{c})^{c1}
+    *)
+  Example escaping_ty : has_type Γ $!c1 Σ escaping ({CanThrow | {♦}} ==> {{TUnit | ∅} ==> {TUnit | ∅} | #!1}) $!c1.
+    unfold escaping. subst c1. subst Γ.
+    apply t_abs; ccrush.
+    apply t_seq with (T1:=TUnit) (q1:=∅); ccrush.
+    * apply t_deref with (d:=$!0); ccrush.
+      eapply t_var; ccrush.
+    * apply t_abs; ccrush.
+      apply t_sub with (T1:=Nothing) (d1:=∅); ccrush.
+      dep_app ($!2) (∅).
+      eapply t_app with (T1:=TUnit); ccrush.
+      - subst CanThrow. eapply t_var; ccrush.
+      - apply t_base; ccrush.
+    Qed.
+  (** Now suppose we could type the following application: *)
+  Example escaping_bad : exists S q, has_type Γ $!c1 Σ (tapp (ttapp try_) escaping) S q.
+    eexists. eexists. eapply t_app_fresh with (df:=∅). 4: eapply escaping_ty.
+    (* We have a typing mismatch: *)
+    (* suppose we can pick those qualifiers so that they don't overlap *)
+    dom_equals ({♦}).
+    (* try_ requires that the block `escaping` returns a disjoint function, but the type of `escaping` is
+       dependent on its capability argument. Hence, we need to be able to instantiate try_ in away that
+       the block argument reaches the capability (indicated by #!1) in the type.
+       No such parametric instantiation exists, and neither can we use subsumption to get rid of the dependency #!1,
+       because it occurs negatively in the type.
+       *)
+  Abort.
+
+  (* Examples that are rejected by Scala capture types, but legal in our type system *)
+  (* fresh1 = try { () => new Ref() } *)
+  Example fresh1 := (tapp (ttapp try_) (tabs (tref tunit))).
+  (* fresh2 = try { () => { val y = new Ref(unit); { x => y } } }*)
+  Example fresh2 := (tapp (ttapp try_) (tabs escaping_closure)).
+
+  (* Return with the freshness marker makes it necessary to have this alternative typing
+     explicitly attaching the ♦:
+        try : (∀A^a<:⊤^♦. ((CanThrow^♦ => A^♦a)^♦ => A^♦a)^a)^∅
+     An instantiation of the previous type with a fresh argument is not possible with the current typing rules.
+  *)
+  Example try_ty_alt :  has_type [] ∅ [] try_ (∀.{ {{CanThrow | {♦} } ==> {#3 | #♦3} | {♦} } ==> {#3 | #♦3} | #!1 }) ∅.
+  Proof.
+    intros. unfold try_.
+    apply t_tabs; ccrush. (* $1 <- A *)
+    apply t_abs; ccrush.  (* $3 <- block *)
+    change_qual (openq ($!1 ⊔ $!3)  {♦} $♦1).
+    change_type (open_ty TUnit ∅ CanThrow {♦} $1).
+    eapply t_let_fresh with (q1':={♦}) (df':=$♦1 ⊔ $♦3) ; try solve [ccrush].
+    * eapply weaken'. eapply t_mkThrow. all: ccrush.
+    * cleanup.
+      change_qual (openq $!3 $!5 $♦1).
+      change_type (open_ty TUnit ∅ CanThrow $!5 $1).
+      apply t_app_fresh with (d1':=$♦5) (df':=$♦3); ccrush.
+      - eapply t_var; ccrush.
+      - eapply t_var; ccrush.
+  Qed.
+
+  (* fresh1 : Ref[Unit]^{♦} *)
+  Example fresh1_ty : has_type [] {♦} [] fresh1 (TRef ∅ TUnit) {♦}.
+  Proof.
+    unfold fresh1.
+    change_qual (openq ∅ ∅ {♦}).
+    change_type (open_ty TUnit ∅  ({CanThrow | {♦}} ==> {TRef ∅ TUnit | {♦} }) ∅ (TRef ∅ TUnit)).
+    eapply t_app_fresh with (d1':=∅) (df':={♦}); try solve [ccrush].
+    * (* try *)
+      change_qual (openq ∅ ∅ #!1).
+      change_type (open_ty TUnit ∅ (TRef ∅ TUnit) ∅ ({{CanThrow | {♦}} ==> {#3 | #♦3} | {♦}} ==> {#3 | #♦3})).
+      apply t_tapp; ccrush.
+      apply (t_sub_bound ⊤ {♦}); ccrush. eapply weaken_flt. apply try_ty_alt; ccrush. all: ccrush.
+    * (* block *)
+      apply t_abs; ccrush.
+      change_qual ({♦} ⊔ ∅).
+      apply t_ref; ccrush.
+      apply t_base; ccrush.
+  Qed.
+
+  (* fresh2 : f(Unit => Ref[Unit]^f)^{♦}  *)
+  Example fresh2_ty : has_type [] {♦} [] fresh2 ({TUnit | ∅}  ==> {TRef ∅ TUnit | #!0}) {♦}.
+    unfold fresh2.
+    change_qual (openq ∅ ∅ {♦}).
+    change_type (open_ty TUnit ∅  ({CanThrow | {♦}} ==> { ({TUnit | ∅}  ==> {TRef ∅ TUnit | #!0}) | {♦} }) ∅ ({TUnit | ∅} ==> {TRef ∅ TUnit | #! 0})).
+    eapply t_app_fresh with (d1':=∅) (df':={♦}); try solve [ccrush].
+    * (* try *)
+      cleanup.
+      change_qual (openq ∅ ∅ #!1).
+      change_type (open_ty TUnit ∅ ({TUnit | ∅} ==> {TRef ∅ TUnit | #! 0}) ∅ ({{CanThrow | {♦}} ==> {#3 | #♦3} | {♦}} ==> {#3 | #♦3})).
+      apply t_tapp; ccrush.
+      apply (t_sub_bound ⊤ {♦}); ccrush. eapply weaken_flt. apply try_ty_alt; ccrush. all: ccrush.
+    * (* block *)
+      apply t_abs; try solve [ccrush].
+      unfold escaping_closure. cleanup.
+      (* use the typing from above *)
+      eapply weaken'. eapply ret_const. all : ccrush.
+  Qed.
+
+End TryCatch.

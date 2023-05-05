@@ -60,7 +60,7 @@ Coercion TVar : var >-> ty.
 
 Inductive binding {X: Type} :=
 | bind_tm : X -> binding  (* term typing x: T *)
-| bind_ty : X -> binding  (* abstract typing X <: T*)
+| bind_ty : X -> binding  (* abstract tying X <: T*)
 .
 
 Definition tenv := list (@binding (bool * ty * qual)). (* (isFunctionSelfRef, Type, Qual) *)
@@ -291,6 +291,13 @@ Inductive qstp : tenv -> senv -> qual -> qual -> Prop :=
     closed_qual 0 f (‖Σ‖) df ->
     ♦∉ df ->
     qstp Γ Σ (df ⊔ $!f) $!f
+
+| qs_self_all : forall Γ Σ f df T1 d1 T2 d2,
+    indexr f Γ = Some (bind_tm(true, (TAll d1 d2 T1 T2), df)) ->
+    closed_qual 0 f (‖Σ‖) df ->
+    ♦∉ df ->
+    qstp Γ Σ (df ⊔ $!f) $!f
+
 | qs_qvar : forall Γ Σ b U x q1,
     indexr x Γ = Some(bind_tm(b, U, q1)) ->
     closed_ty 0 x (‖Σ‖) U ->
@@ -320,12 +327,12 @@ Inductive stp : tenv -> senv -> ty -> qual -> ty -> qual -> Prop :=
     qstp Γ Σ d1 d2 ->
     stp Γ Σ T d1 TTop d2
 
-| s_tvar_refl: forall Γ Σ x d1 d2 v,
+| s_tvar_refl: forall Γ Σ x d1 d2 v,    (* ignore  q *)
     indexr x Γ = Some v ->              (* follows DOT *)
     qstp Γ Σ d1 d2 ->
     stp Γ Σ (TVar (varF x)) d1 (TVar (varF x)) d2
 
-| s_tvar_trans: forall Γ Σ T1 T2 d0 d1 d2 x,  (* use type var *)
+| s_tvar_trans: forall Γ Σ T1 T2 d0 d1 d2 x,  (* use  type var *)
     indexr x Γ = Some(bind_ty (false, T1, d0)) ->
     closed_ty  0 0 (‖ Σ ‖) T1 ->
     stp Γ Σ T1 d1 T2 d2 ->
@@ -1579,6 +1586,8 @@ Lemma qstp_closed : forall {Γ Σ d1 d2}, qstp Γ Σ d1 d2 -> closed_qual 0 (‖
   - eapply closed_qual_sub; eauto.
   - apply indexr_var_some' in H. apply closed_qual_qlub. eapply closed_qual_monotone; eauto. lia. apply just_fv_closed. auto.
   - apply indexr_var_some' in H. apply just_fv_closed. auto.
+  - apply indexr_var_some' in H. apply closed_qual_qlub. eapply closed_qual_monotone; eauto. lia. apply just_fv_closed.  auto.
+  - apply indexr_var_some' in H. apply just_fv_closed. auto.
   - apply indexr_var_some' in H. apply just_fv_closed. auto.
   - apply indexr_var_some' in H. eapply closed_qual_monotone; eauto. lia.
   - apply indexr_var_some' in H. apply just_fv_closed. auto.
@@ -1748,6 +1757,14 @@ Proof.
       eapply qs_self; eauto. rewrite <- indexr_insert_ge; auto.
       eapply @indexr_splice_tenv with (k:=‖Γ2‖) in H; auto. simpl in H. eauto.
       eapply splice_qual_closed''; eauto. rewrite <- not_fresh_splice_iff. auto.
+  - rewrite splice_qual_qlub_dist. bdestruct (f <? ‖Γ2‖).
+    * rewrite splice_qual_just_fv_lt; auto. erewrite @splice_qual_id with (d:=df).
+      eapply qs_self_all; eauto. rewrite indexr_skips. rewrite indexr_skips in H. rewrite indexr_skip. eauto.
+      1-3: simpl; lia. eapply closed_qual_monotone; eauto. lia.
+    * rewrite splice_qual_just_fv_ge; auto.
+      eapply qs_self_all; eauto. rewrite <- indexr_insert_ge; auto.
+      eapply @indexr_splice_tenv with (k:=‖Γ2‖) in H; auto. simpl in H. eauto.
+      eapply splice_qual_closed''; eauto. rewrite <- not_fresh_splice_iff. auto.
   - bdestruct (x <? ‖Γ2‖).
     * rewrite splice_qual_just_fv_lt; auto. erewrite @splice_qual_id with (d:=q1).
       eapply qs_qvar; eauto. rewrite indexr_skips. rewrite indexr_skips in H. rewrite indexr_skip. eauto.
@@ -1771,7 +1788,6 @@ Proof.
   - eapply qs_trans; eauto.
 Qed.
 
-
 Lemma weaken_qstp : forall {Γ Σ d1 d2}, qstp Γ Σ d1 d2 -> forall T', qstp (T' :: Γ) Σ d1 d2.
   intros Γ Σ d1 d2 HST. specialize (@weaken_qstp_gen [] Γ Σ d1 d2) as Hsp. simpl in *.
   specialize (Hsp HST). intros. specialize (Hsp T'). apply qstp_closed in HST. intuition.
@@ -1790,6 +1806,7 @@ Lemma weaken_qstp_store : forall {Γ Σ d1 d2}, qstp Γ Σ d1 d2 -> forall {Σ'}
   intros. induction H.
   - apply qs_sq; auto. rewrite app_length. eapply closed_qual_monotone; eauto. lia.
   - eapply qs_self; eauto. erewrite app_length. eapply closed_qual_monotone; eauto. lia.
+  - eapply qs_self_all; eauto. erewrite app_length. eapply closed_qual_monotone; eauto. lia.
   - eapply qs_qvar; eauto. all : erewrite app_length. eapply closed_ty_monotone; eauto. lia. eapply closed_qual_monotone; eauto. lia.
   - eapply qs_qvar_ty; eauto. all : erewrite app_length. eapply closed_ty_monotone; eauto. lia. eapply closed_qual_monotone; eauto. lia.
   - eapply qs_cong; eauto. rewrite app_length. eapply closed_qual_monotone; eauto. lia.
@@ -1813,7 +1830,7 @@ Proof. intros Γ1 Γ2 Σ T1 d1 T2 d2  Hstp T'. remember (Γ1 ++ Γ2)  as Γ. gen
     intuition. eapply splice_ty_closed;  auto. simpl.  lia.
     eapply weaken_qstp_gen. intuition.
   - (* TVarF x trans *) intros; subst. simpl.  intuition. specialize (IHHstp Γ1).  intuition.
-    destruct (le_lt_dec (‖ Γ2 ‖)  x) eqn:Heq.
+     destruct (le_lt_dec (‖ Γ2 ‖)  x) eqn:Heq.
     * (* |Γ2| <= x < |Γ1|+|Γ2|*)
       econstructor; eauto.
       rewrite <- indexr_insert_ge; eauto.
@@ -1883,7 +1900,6 @@ Lemma weaken_stp' : forall {Γ Σ T1 d1 T2 d2}, stp Γ Σ T1 d1 T2 d2 -> forall 
     apply weaken_stp. auto. simpl. auto.
 Qed.
 
-
 Lemma narrowing_qstp_gen : forall{Γ1 b U du Γ2 Σ d1 d2},
     qstp (Γ1 ++ bind_tm(b,U,du) :: Γ2) Σ d1 d2 -> (b = true -> (♦∈ du)) ->
     forall {V dv}, stp Γ2 Σ V dv U du ->
@@ -1892,6 +1908,12 @@ Lemma narrowing_qstp_gen : forall{Γ1 b U du Γ2 Σ d1 d2},
   generalize dependent Γ1; induction HST; intros; subst; intuition.
   - constructor. auto. rewrite app_length in *. simpl in *. auto.
   - eapply qs_self; eauto. destruct (PeanoNat.Nat.lt_trichotomy f (‖Γ2‖)) as [Hlen | [Hlen | Hlen] ].
+    * rewrite indexr_skips. rewrite indexr_skips in H.
+      rewrite indexr_skip.  rewrite indexr_skip in H. eauto. all: simpl; lia.
+    * subst. rewrite indexr_skips in H; auto. rewrite indexr_head in H. inversion H. subst.
+      intuition. rewrite H1 in H3. discriminate.
+    * rewrite indexr_skips'; auto. rewrite indexr_skips' in H; auto.
+  - eapply qs_self_all; eauto. destruct (PeanoNat.Nat.lt_trichotomy f (‖Γ2‖)) as [Hlen | [Hlen | Hlen] ].
     * rewrite indexr_skips. rewrite indexr_skips in H.
       rewrite indexr_skip.  rewrite indexr_skip in H. eauto. all: simpl; lia.
     * subst. rewrite indexr_skips in H; auto. rewrite indexr_head in H. inversion H. subst.
@@ -1976,6 +1998,11 @@ Lemma narrowing_qstp_ty_gen : forall{Γ1 U du Γ2 Σ d1 d2},
       rewrite indexr_skip.  rewrite indexr_skip in H. eauto. all: simpl; lia.
     * subst. rewrite indexr_skips in H; auto. rewrite indexr_head in H. inversion H.
     * rewrite indexr_skips'; auto. rewrite indexr_skips' in H; auto.
+  - eapply qs_self_all; eauto. destruct (PeanoNat.Nat.lt_trichotomy f (‖Γ2‖)) as [Hlen | [Hlen | Hlen] ].
+    * rewrite indexr_skips. rewrite indexr_skips in H.
+      rewrite indexr_skip.  rewrite indexr_skip in H. eauto. all: simpl; lia.
+    * subst. rewrite indexr_skips in H; auto. rewrite indexr_head in H. inversion H.
+    * rewrite indexr_skips'; auto. rewrite indexr_skips' in H; auto.
   - destruct (PeanoNat.Nat.lt_trichotomy x (‖Γ2‖)) as [Hlen | [Hlen | Hlen] ].
     * eapply qs_qvar; eauto. rewrite indexr_skips. rewrite indexr_skips in H.
       rewrite indexr_skip.  rewrite indexr_skip in H. eauto. 1-4: simpl; lia.
@@ -1998,8 +2025,7 @@ Lemma narrowing_qstp_ty_gen : forall{Γ1 U du Γ2 Σ d1 d2},
   - specialize (IHHST1 Γ1). intuition. specialize (H0 dv). intuition.
     specialize (IHHST2 Γ1). intuition. specialize (H0 dv). intuition.
     eapply qs_trans; eauto.
-  Qed.
-
+Qed.
 
 Lemma weaken_stp_store : forall {Σ Γ T1 d1 T2 d2}, stp Γ Σ T1 d1 T2 d2 -> forall Σ', stp Γ (Σ' ++ Σ) T1 d1 T2 d2.
 Proof. intros Σ Γ T1 d1 T2 d2 HSTP. induction HSTP; intros.
@@ -2020,19 +2046,17 @@ Lemma weaken_stp_store_ext : forall {Σ Γ T1 d1 T2 d2}, stp Γ Σ T1 d1 T2 d2 -
   intros. unfold extends in H0. destruct H0. subst. apply weaken_stp_store. auto.
 Qed.
 
-
-
 Lemma stp_shrink_var : forall {Γ Σ T1 d1 T2 d2}, stp Γ Σ T1 d1 T2 d2 -> forall {fr x}, x < ‖Γ‖ -> stp Γ Σ T1 ${fr}x T2 ${fr}x.
   intros. eapply stp_qual_irrelevance; eauto. apply qs_sq; auto. apply just_fv_closed. auto.
 Qed.
 
 Lemma s_trans : forall {Γ Σ T1 d1 T2 d2 T3 d3}, stp Γ Σ T1 d1 T2 d2 -> stp Γ Σ T2 d2 T3 d3 -> stp Γ Σ T1 d1 T3 d3.
-Proof. intros.
-       assert (stp Γ Σ T2 d2 T3 d2). { eapply stp_qual_irrelevance; eauto. apply qs_sq; auto. apply stp_closed in H. intuition. }
-       assert (stp Γ Σ T1 d1 T3 d2). { eapply s_trans'; eauto. }
-       eapply stp_qual_irrelevance; eauto. apply stp_qstp_inv in H. apply stp_qstp_inv in H0. eapply qs_trans; eauto.
+Proof.
+  intros.
+  assert (stp Γ Σ T2 d2 T3 d2). { eapply stp_qual_irrelevance; eauto. apply qs_sq; auto. apply stp_closed in H. intuition. }
+  assert (stp Γ Σ T1 d1 T3 d2). { eapply s_trans'; eauto. }
+  eapply stp_qual_irrelevance; eauto. apply stp_qstp_inv in H. apply stp_qstp_inv in H0. eapply qs_trans; eauto.
 Qed.
-
 
 Lemma narrowing_stp_ty_gen : forall{Γ1 U du Γ2 Σ T1 d1 T2 d2},
       stp (Γ1 ++ (bind_ty (false, U, du)) :: Γ2) Σ T1 d1 T2 d2 ->
@@ -2099,7 +2123,7 @@ Proof. intros Γ1 U du Γ2 Σ T1 d1 T2 d2 HST. remember (Γ1 ++ (bind_ty (false,
     eapply IHHST2; eauto.
   - subst. specialize (IHHST1 Γ1).  specialize (IHHST2 Γ1). intuition.
     specialize (H2 V dv). specialize (H3 V dv). intuition.  eapply s_trans'; eauto.
-  Qed.
+Qed.
 
 Lemma narrowing_stp_ty : forall{U du Γ Σ T1 d1 T2 d2}, stp ((bind_ty (false, U, du)) :: Γ) Σ T1 d1 T2 d2 ->
   forall {V dv}, closed_ty 0 0 (length Σ) V -> closed_qual 0 0 (length Σ) dv ->  stp Γ Σ V dv U du ->
@@ -2313,10 +2337,7 @@ Proof.
 Qed.
 
 Lemma qstp_empty : forall {Σ q1 q2}, qstp [] Σ q1 q2 -> q1 ⊑ q2.
-  intros. remember [] as Γ. induction H; subst; auto.
-  simpl in H. discriminate.
-  simpl in H. discriminate.
-  simpl in H. discriminate.
+  intros. remember [] as Γ. induction H; subst; auto; try solve [simpl in H; discriminate].
   intuition. eapply subqual_trans; eauto.
 Qed.
 
@@ -2332,10 +2353,10 @@ Lemma openq_subqual : forall {df d1 d2 φ f l}, closed_qual 0 f l φ -> df ⊑ �
 Qed.
 
 Lemma open_qual_subqual': forall {d1 d2 d}, d1 ⊑ d2 -> forall {k}, ([[ k ~> d1 ]]ᵈ d) ⊑ ([[ k ~> d2 ]]ᵈ d).
-Proof. intros. destruct d1. destruct d2. destruct d. simpl in *. intuition.
-       destruct (mem k t6) eqn: Hmem; simpl in *; intuition; try fnsetdec. destr_bool. destr_bool.
+Proof.
+  intros. destruct d1. destruct d2. destruct d. simpl in *. intuition.
+  destruct (mem k t6) eqn: Hmem; simpl in *; intuition; try fnsetdec. destr_bool. destr_bool.
 Qed.
-
 
 Fixpoint has_type_filter {Γ φ Σ t T d} (ht : has_type Γ φ Σ t T d) : d ⊑ φ.
   destruct ht; intuition.
@@ -2626,7 +2647,6 @@ Proof.  intros Γ φ Σ t T d HT.
   - econstructor; eauto. eapply weaken_stp_store_ext; eauto.
     eapply weaken_store_senv_saturated; eauto.
 Qed.
-
 
 Lemma narrowing_saturated : forall {Γ1 b U du Γ2 Σ q},
     saturated (Γ1 ++ bind_tm(b,U,du) :: Γ2) Σ q ->
@@ -3731,6 +3751,14 @@ Lemma subst_qstp :  forall {Γ b Tf df df' Σ d1 d2},
     * rewrite subst1_qlub_dist. destruct f. lia. rewrite <- subst1_just_fv.
       eapply qs_self; eauto. eapply @indexr_subst1 with (dx:=df') in H; try lia. eauto.
       eapply closed_qual_subst1; eauto.
+    -  bdestruct (f =? 0).
+    * pose (H' := H). subst. rewrite indexr_skips in H'; auto. simpl in H'. inversion H'. subst.
+      rewrite subst1_qlub_dist. rewrite subst1_just_fv0. erewrite subst1_qual_id; eauto. inversion H4; subst.
+      + rewrite qlub_idem. apply qs_sq; auto. rewrite subst1_tenv_length. eapply closed_qual_monotone; eauto. lia.
+      + apply not_fresh_fresh_false in H1. contradiction.
+    * rewrite subst1_qlub_dist. destruct f. lia. rewrite <- subst1_just_fv.
+      eapply qs_self_all; eauto. eapply @indexr_subst1 with (dx:=df') in H; try lia. eauto.
+      eapply closed_qual_subst1; eauto.
   - bdestruct (x =? 0).
     * subst. pose (H' := H). subst. rewrite indexr_skips in H'; auto. simpl in H'. inversion H'. subst.
       rewrite subst1_just_fv0. erewrite subst1_qual_id; eauto. inversion H5; subst.
@@ -3762,6 +3790,11 @@ Proof. intros Γ T d d' Σ d1 d2 H. remember (Γ ++ [bind_ty(false, T, d)]) as �
     * rewrite subst1_qlub_dist. destruct f. lia. rewrite <- subst1_just_fv.
       eapply qs_self; eauto. eapply @indexr_subst1 with (dx:=d') in H; try lia. eauto.
       eapply closed_qual_subst1; eauto.
+  -  bdestruct (f =? 0).
+    * pose (H' := H). subst. rewrite indexr_skips in H'; auto. simpl in H'. inversion H'.
+    * rewrite subst1_qlub_dist. destruct f. lia. rewrite <- subst1_just_fv.
+      eapply qs_self_all; eauto. eapply @indexr_subst1 with (dx:=d') in H; try lia. eauto.
+      eapply closed_qual_subst1; eauto.
   - bdestruct (x =? 0).
     * subst. pose (H' := H). subst. rewrite indexr_skips in H'; auto. simpl in H'. inversion H'.
     * destruct x. lia. rewrite <- subst1_just_fv. eapply qs_qvar.
@@ -3779,7 +3812,6 @@ Proof. intros Γ T d d' Σ d1 d2 H. remember (Γ ++ [bind_ty(false, T, d)]) as �
   - eapply qs_trans. eapply IHqstp1; eauto. eauto.
   Unshelve. all : auto.
 Qed.
-
 
 Lemma subst_stp : forall{T1 T2},
     forall {Γ b Tf df df' Σ d1 d2},
@@ -3974,8 +4006,6 @@ Lemma substitution_gen :
 
     intuition. rename H8 into IHHT. specialize IHHT with (Γ := ((bind_ty(false,T1, d1):: (bind_tm (true, TAll d1 d2 T1 T2, df)) :: Γ0))).
     intuition. rename H8 into IHHT.
-
-
     (* 2. reason about opening and subst, apply IH *)
     unfold open_tm' in *. unfold open_ty' in *. unfold open_ty in *.
     unfold openq' in *. unfold openq in *.
@@ -3988,7 +4018,6 @@ Lemma substitution_gen :
     subst. rewrite subst1_qlub_dist. repeat rewrite subst1_qlub_dist. f_equal.
     repeat rewrite <- subst1_just_fv. rewrite subst1_fresh_id. auto. rewrite app_length. simpl. lia.
     Unshelve. auto.  eapply qglb_mono_lr; eauto.
-
   - (* t_tapp *) intuition. rename H10 into IHHT. simpl.
     replace ({ 0 |-> dx' }ᵈ (openq df d1 d2)) with
       (openq ({ 0 |-> dx' }ᵈ df) ({ 0 |-> dx' }ᵈ d1) ({ 0 |-> dx' }ᵈ d2)).
@@ -4010,8 +4039,7 @@ Lemma substitution_gen :
     * replace (∅) with ({0 |-> dx' }ᵈ ∅) at 1; auto.
       unfold open_ty. repeat erewrite subst1_open_ty_comm; eauto.
     * unfold openq. repeat erewrite <- subst1_open_qual_comm; eauto.
-
-    - (* t_tapp_fresh *) intuition. rename H15 into IHHT. simpl.
+  - (* t_tapp_fresh *) intuition. rename H15 into IHHT. simpl.
     replace ({ 0 |-> dx' }ᵈ (openq df d1 d2)) with
                (openq ({ 0 |-> dx' }ᵈ df) ({ 0 |-> dx' }ᵈ d1) ({ 0 |-> dx' }ᵈ d2)).
     replace ({0 |-> Tx ~ dx' }ᵀ (T2 <~ᵀ TUnit ~ ∅; T1 ~ d1)) with
@@ -4035,7 +4063,6 @@ Lemma substitution_gen :
     erewrite <- subst1_open_qual_comm; eauto; erewrite <- subst1_open_qual_comm; eauto. 1,2: apply subst1_senv_saturated; auto.
     replace (∅) with ({0 |-> dx' }ᵈ ∅) at 1; auto. unfold open_ty. repeat erewrite subst1_open_ty_comm; eauto.
     unfold openq. repeat erewrite <- subst1_open_qual_comm; eauto.
-
   - (* t_base *) simpl. rewrite NatSetFacts.empty_b. rewrite unsplice_set_empty.
     apply t_base; auto. eapply closed_qual_subst1'; eauto.
   - (* t_var *) simpl. (bdestruct (x =? 0)).
@@ -4171,7 +4198,6 @@ Lemma substitution1 : forall {t bf Tf df bx Tx dx Σ T d},
   erewrite subst1_qual_id; eauto. rewrite (@qlub_assoc df df). rewrite qlub_idem. auto.
   simpl. erewrite subst1_qual_id; eauto. erewrite subst1_ty_id; eauto.
 Qed.
-
 
 (* t_app case *)
 Lemma substitution_stp1 : forall{T1 T2},
@@ -5544,3 +5570,4 @@ Corollary preservation_of_separation : forall {Σ t1 T1 q1 t2 T2 q2},
   eapply weaken_store_senv_saturated; eauto.
   apply has_type_senv_saturated in HT2; auto. eapply weaken_store_senv_saturated; eauto.
 Qed.
+

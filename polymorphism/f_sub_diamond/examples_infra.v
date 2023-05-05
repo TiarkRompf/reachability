@@ -505,3 +505,27 @@ Ltac change_qual q :=
   | [ |- senv_saturated _ ?q2 ] => replace q2 with q; try solve [ccrush]
   | [ |- saturated _ _ ?q2 ] => replace q2 with q; try solve [ccrush]
   end.
+
+(* scale the type bound of a universal type *)
+Lemma t_sub_bound : forall A' p', forall {Γ Σ φ t A p B q r},
+  wf_senv Σ ->
+  stp Γ Σ A p A' p' ->
+  has_type Γ φ Σ t (TAll p' q A' B) r ->
+  has_type Γ φ Σ t (TAll p  q A  B) r.
+Proof.
+  intros. eapply t_sub; eauto.
+  specialize (has_type_closed H1) as Hcl1. specialize (stp_closed H0) as Hcl2. intuition.
+  inversion H5. subst.
+  apply s_all; ccrush.
+  apply stp_refl; ccrush.
+  apply closed_ty_open2; ccrush.
+  apply qs_sq; ccrush. apply closed_qual_open2; ccrush.
+  eapply has_type_filter; eauto. eapply has_type_senv_saturated; eauto.
+Qed.
+
+Lemma sat_fr_senv_sat : forall {Γ Σ q}, saturated Γ Σ (q ⊔ {♦}) -> senv_saturated Σ q.
+  intros. inversion H. unfold senv_saturated in *. intros.
+  assert (l ∈ₗ q ⊔ {♦}). { destruct q. qdec. }
+  apply H1 in H3. inversion H3. econstructor; eauto. destruct q. destruct q'. qdec.
+Qed.
+#[global] Hint Resolve sat_fr_senv_sat : core.

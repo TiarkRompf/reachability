@@ -12,3 +12,5 @@ env.v
 f_sub_diamond.v
 examples_infra.v
 examples.v
+examples_cell_opaque.v
+examples_pairs.v

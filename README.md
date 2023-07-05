@@ -42,6 +42,6 @@ by Yuyan Bao, Guannan Wei, Oliver Bračevac, Luke Jiang, Qiyang He, and Tiark Ro
 by Guannan Wei, Oliver Bračevac, Siyuan He, Yuyan Bao, and Tiark Rompf
 (to appear).
 
-[3] **Graph IRs for Impure Higher-Order Languages -- Making Aggressive Optimizations Affordable with Precise Effect Dependencies** (2023)</br>
+[3] **Graph IRs for Impure Higher-Order Languages -- Making Aggressive Optimizations Affordable with Precise Effect Dependencies** (OOPSLA 2023)</br>
 by Oliver Bračevac, Guannan Wei, Luke Jiang, Supun Abeysinghe, Songlin Jia, Siyuan He, Yuyan Bao, and Tiark Rompf
 (to appear).

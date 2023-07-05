@@ -983,7 +983,7 @@ Lemma closed_ty_open : forall {T fr b f l}, closed_ty (S b) f l T -> forall {x},
   erewrite closed_ty_open_id; eauto. lia.
 Qed.
 
-Lemma closed_tm_open' : forall {t b f l}, closed_tm (S b) f l t -> forall {x}, x <= f -> forall {t'}, closed_tm 0 x l t' -> closed_tm b f l ([[ b ~> t' ]]ᵗt).
+Lemma closed_tm_open' : forall {t b f l}, closed_tm (S b) f l t -> forall {x}, x <= f -> forall {t'}, closed_tm 0 x l t' -> closed_tm b f l ([[ b ~> t' ]]ᵗ t).
   induction t; intros; simpl; intuition; inversion H; subst; try constructor;
   try solve [eapply IHt1; eauto | eapply IHt2; eauto | eapply IHt; eauto ].
   destruct (Nat.eqb b x0) eqn:Heq; intuition. eapply closed_tm_monotone; eauto; lia.

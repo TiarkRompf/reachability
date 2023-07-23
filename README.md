@@ -23,6 +23,9 @@ The mechanizations based on sets reuse some libraries by the [UPenn PL Club](htt
 * Interactive [prototype](http://tiarkrompf.github.io/notes/?/graph-ir/) for [1],
 also demonstrating the use of reachability types for graph-based IRs for impure functional languages [3].
 
+* A standalone prototype language [Diamond](https://github.com/Kraks/diamond-lang) implements
+polymorphic reachability types [2].
+
 ## Contributors
 
 * [Oliver Bračevac](https://bracevac.org) (Mechanization lead)

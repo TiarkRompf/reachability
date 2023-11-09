@@ -14,7 +14,6 @@ Require Import env.
 Require Import tactics.
 Require Import nats.
 Require Import qualifiers.
-(* Require Import qualifiers2. *)
 Require Import boolean.
 
 Import QualNotations.
@@ -1776,16 +1775,6 @@ Lemma stp_scale_qqplus : forall {Γ Σ T1 d1 T2 d2}, stp Γ Σ T1 d1 T2 d2 -> fo
     apply qs_sq. Qcrush. apply stp_closed in H. apply closed_Qual_qor; intuition.
   - unfold qqplus. apply Is_true_eq_false in H1,H2. rewrite H1,H2. auto.
 Qed.
-
-(* Lemma saturated_tenv_saturated : forall {Γ Σ q}, saturated Γ Σ q -> tenv_saturated Γ Σ q. *)
-(*   intros. inversion H. auto. *)
-(* Qed. *)
-(* #[global] Hint Resolve saturated_tenv_saturated : core. *)
-
-(* Lemma saturated_senv_saturated : forall {Γ Σ q}, saturated Γ Σ q -> senv_saturated Σ q. *)
-(*   intros. inversion H. auto. *)
-(* Qed. *)
-(* #[global] Hint Resolve saturated_senv_saturated : core. *)
 
 Lemma saturated_cons : forall {Γ Σ q}, saturated Γ Σ q -> forall {b T q'}, saturated ((bind_tm, b, T, q') :: Γ) Σ q.
 intros. unfold saturated in *. intuition. unfold tenv_saturated in *. intros. apply H0 in H. inversion H.
@@ -4529,7 +4518,7 @@ Proof.
                eapply weaken_store_saturated; eauto.
                apply saturated_qqplus; eauto. eapply weaken_store_saturated; eauto.
                constructor; eauto.
-               all: eapply weaken_store_saturated; eauto; constructor; eauto. 
+               all: eapply weaken_store_saturated; eauto; constructor; eauto.
             ** apply has_type_closed in H31. intuition. inversion H33. subst.
                apply stp_refl. simpl. eapply closed_ty_monotone; eauto.
                constructor; auto. apply Qqplus_upper_l.
@@ -4544,14 +4533,14 @@ Proof.
              replace (d2 <~ᵈ df; d1) with (d2 <~ᵈ df ⋓ d'; d1).
              apply t_tapp_fresh with (T1:=T1) (df':=((df' ⋓ d'))) (d1':=d1'); auto.
              erewrite <- @qqcap_fresh_l with (Σ':=Σ'); eauto.
-             eapply Subqual_qqplus; eauto. 
+             eapply Subqual_qqplus; eauto.
              eapply closed_ty_monotone; eauto. eapply closed_Qual_monotone; eauto.
-             1,2: eapply Subq_trans; eauto. 
+             1,2: eapply Subq_trans; eauto.
              apply Qqplus_bound; eauto.
              eapply weaken_store_saturated; eauto.
              apply saturated_qqplus; eauto.
              eapply weaken_store_saturated; eauto.
-             constructor; eauto. 
+             constructor; eauto.
              1,2: eapply weaken_store_senv_saturated; eauto.
              eapply openq_subqual_0_false; auto.
         * (* df not fresh *) rewrite not_fresh_qqplus in H31; auto. apply (Preserve Σ' ∅); auto.
@@ -4634,7 +4623,7 @@ Proof.
      -  (* left congruence *)
         apply has_type_closed in H0 as Hcl. intuition.
         specialize (H19 σ H10). destruct H19 as [t1' [σ' HH7]]. exists (tapp t1' t2). exists σ'. intuition. apply step_c_app_l. intuition.
-        destruct H23. 
+        destruct H23.
         #[local] Hint Resolve n_reflect_true : bdestruct.
         bdestruct (qbvs d2 0).
         #[local] Remove Hints n_reflect_true : bdestruct.
@@ -4747,7 +4736,7 @@ Proof.
 
          eapply openq_subqual; eauto. apply has_type_filter in H. auto.
          eapply senv_saturated_openq; eauto. eapply has_type_senv_saturated; eauto.
-         repeat apply Qor_bound; auto. apply has_type_filter in H; eauto. 
+         repeat apply Qor_bound; auto. apply has_type_filter in H; eauto.
          eapply Subq_trans; eauto. 1,2 : inversion H33; auto.
 
      -  (* right congruence *)
@@ -4758,7 +4747,7 @@ Proof.
         destruct H14 as [t2' [σ' HH22]]. exists (tapp t1 t2'). exists σ'. intuition. constructor; intuition.
 
         destruct H17. destruct (♦∈? d1) eqn:Hfresh.
-        * (* d1 fresh *) 
+        * (* d1 fresh *)
           #[local] Hint Resolve n_reflect_true : bdestruct.
           bdestruct (qbvs d2 1).
           #[local] Remove Hints n_reflect_true : bdestruct.
@@ -4770,8 +4759,8 @@ Proof.
                 eapply weaken_flt. eapply weaken_store; eauto. all : auto. eapply @qqcap_fresh_r with (Σ':=Σ'); eauto.
                 eapply Subqual_qqplus; eauto. apply Qqplus_bound; eauto.
                 apply saturated_qqplus; eauto. 1,3: eapply weaken_store_saturated; eauto.
-                constructor; eauto. 
-                eapply weaken_store_saturated; eauto. constructor; eauto. 
+                constructor; eauto.
+                eapply weaken_store_saturated; eauto. constructor; eauto.
             **  apply has_type_closed in H30. intuition. inversion H19. subst.
                 apply stp_refl. unfold open_ty. eapply closed_ty_open2; eauto. eapply closed_ty_monotone; eauto.
                 constructor; auto. apply Qqplus_upper_l. apply closed_Qual_qqplus; auto.
@@ -4789,10 +4778,10 @@ Proof.
              eapply weaken_flt. eapply weaken_store; eauto. auto. auto.
              eapply Subqual_qqplus; eauto. eapply Qqplus_bound; eauto.
              apply saturated_qqplus; eauto.
-             eapply weaken_store_saturated; eauto. 
+             eapply weaken_store_saturated; eauto.
              constructor; eauto.
              eapply weaken_store_saturated; eauto.
-             eapply weaken_store_senv_saturated; eauto. 
+             eapply weaken_store_senv_saturated; eauto.
              unfold open_ty. repeat rewrite not_free_prop1; auto.
              eapply openq_subqual_1_false; eauto.
         * (* d1 not fresh *) rewrite not_fresh_qqplus in H30; auto. apply (Preserve Σ' ∅); auto.
@@ -4804,7 +4793,7 @@ Proof.
         apply has_type_closed in H2 as Hcl. intuition.
         specialize (H25 σ H16). destruct H25 as [t1' [σ' HH6]]. exists (tapp t1' t2). exists σ'. intuition. apply step_c_app_l. intuition.
         destruct H29. destruct (♦∈? df) eqn:Hfresh.
-        * (* df fresh *) 
+        * (* df fresh *)
           #[local] Hint Resolve n_reflect_true : bdestruct.
           bdestruct (qbvs d2 0).
           #[local] Remove Hints n_reflect_true : bdestruct.
@@ -4816,12 +4805,12 @@ Proof.
                eapply Subqual_qqplus; eauto.
                eapply weaken_flt. eapply weaken_store; eauto. auto. auto.
                eapply Qqplus_bound; eauto.
-               eapply weaken_store_saturated; eauto. 
+               eapply weaken_store_saturated; eauto.
                apply saturated_qqplus; eauto.
                constructor; eauto.
                eapply weaken_store_saturated; eauto.
                constructor; eauto.
-               eapply weaken_store_senv_saturated; eauto. 
+               eapply weaken_store_senv_saturated; eauto.
             ** apply has_type_closed in H34. intuition. inversion H19. subst.
                apply stp_refl. simpl. eapply closed_ty_monotone; eauto.
                constructor; auto. apply Qqplus_upper_l. apply closed_Qual_qqplus; auto. apply openQ_closed; eauto. eauto.
@@ -4838,7 +4827,7 @@ Proof.
              eapply weaken_flt. eapply weaken_store; eauto. auto. auto.
              apply Qqplus_bound; eauto.
              2 : apply saturated_qqplus; eauto.
-             1,2 : eapply weaken_store_saturated; eauto. constructor; eauto. 
+             1,2 : eapply weaken_store_saturated; eauto. constructor; eauto.
              eapply weaken_store_senv_saturated; eauto.
              eapply openq_subqual_0_false; auto.
         * (* df not fresh *) rewrite not_fresh_qqplus in H34; auto. apply (Preserve Σ' ∅); auto.
@@ -4859,13 +4848,13 @@ Proof.
         apply indexr_head. simpl. eapply closed_qual_monotone; eauto. rewrite <- H13. Qcrush. simpl. lia.
         unfold qdom. Qcrush; eauto.
         apply stp_refl; auto. constructor; auto. simpl. eapply closed_qual_monotone; eauto.
-        constructor. Qcrush. 
+        constructor. Qcrush.
         apply closed_Qual_qor; eauto. rewrite <- H13. Qcrush.
-        rewrite <- H13. 
+        rewrite <- H13.
         apply has_type_filter in H. repeat apply Qor_bound; eauto.
         unfold qdom. Qcrush. simpl. lia.
         rewrite <- H13.
-        rewrite <- qor_assoc. 
+        rewrite <- qor_assoc.
         apply saturated_senv_qor; auto.
         eapply wf_senv_saturated_qplus. apply wf_senv_cons; eauto. eapply has_type_senv_saturated; eauto.
         rewrite indexr_head. eauto.
@@ -4908,7 +4897,7 @@ Proof.
         eapply CtxOK_update; eauto. rewrite <- H15. auto. apply t_sub with (T1:=T) (d1:=d1); auto.
         replace (d1) with (∅ ⊔ d1); auto. apply stp_scale_qor; auto.
         eapply weaken_stp_store_ext; eauto. apply has_type_filter in Ht2; auto.
-        rewrite qor_empty_left; auto. Qcrush; eauto. 
+        rewrite qor_empty_left; auto. Qcrush; eauto.
         eapply has_type_senv_saturated; eauto.
       * (* right congruence *)
         right. intros. specialize (H8 σ H5). destruct H8 as [t' [σ' H4']].
@@ -4984,7 +4973,7 @@ Corollary preservation_of_separation : forall {Σ t1 T1 q1 t2 T2 q2},
   apply (Separate Σ' Σ'' (q1 ⋓ d1) (q2 ⋓ d2) Hext1 Hext2 HT1' HT2'').
   (* now we just need to show that the disjointness is preserved. this is intuitively true from the disjointness
      of the heap effects d1 and d2. *)
-  erewrite <- @qqcap_fresh_r; eauto. erewrite <- qqcap_fresh_l; eauto. 
+  erewrite <- @qqcap_fresh_r; eauto. erewrite <- qqcap_fresh_l; eauto.
   apply has_type_closed in HT1. intuition. eauto.
   apply has_type_closed in HT2. intuition. eauto.
   apply closed_qual_qqplus. apply has_type_closed in HT1. intuition.

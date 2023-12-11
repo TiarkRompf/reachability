@@ -144,7 +144,7 @@ Ltac closed_tm_solve :=
 (* Qed. *)
 
 (* Lemma mem_singleton' : forall {n}, mem n (singleton n) = true. *)
-(*   intros. rewrite mem_singleton. rewrite <- beq_nat_refl. auto. *)
+(*   intros. rewrite mem_singleton. rewrite Nat.eqb_refl. auto. *)
 (* Qed. *)
 
 (* Lemma mem_singleton_neq : forall {m n}, m <> n -> mem n (singleton m) = false. *)

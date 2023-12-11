@@ -16,14 +16,14 @@ Fixpoint update {A} (σ : list A) (l : nat) (v : A) : list A :=
   match σ with
   | [] => σ
   | a :: σ' =>
-      if (beq_nat l (length σ')) then (v :: σ') else (a :: (update σ' l v ))
+      if (Nat.eqb l (length σ')) then (v :: σ') else (a :: (update σ' l v ))
   end.
 
 Fixpoint insert {A} (σ : list A) (l : nat) (v : A) : list A :=
   match σ with
   | [] => σ
   | a :: σ' =>
-      if (beq_nat l (length σ')) then (a :: v :: σ') else (a :: (insert σ' l v ))
+      if (Nat.eqb l (length σ')) then (a :: v :: σ') else (a :: (insert σ' l v ))
   end.
 
 (* Look up a free variable (deBruijn level) in env   *)
@@ -31,12 +31,12 @@ Fixpoint indexr {X : Type} (n : nat) (l : list X) : option X :=
   match l with
     | [] => None
     | a :: l' =>
-      if (beq_nat n (length l')) then Some a else indexr n l'
+      if (Nat.eqb n (length l')) then Some a else indexr n l'
   end.
 
 Lemma indexr_head : forall {A} {x : A} {xs}, indexr (length xs) (x :: xs) = Some x.
   intros. simpl. destruct (Nat.eqb (length xs) (length xs)) eqn:Heq. auto.
-  apply beq_nat_false in Heq. contradiction.
+  apply Nat.eqb_neq in Heq. contradiction.
 Qed.
 
 Lemma indexr_length : forall {A B} {xs : list A} {ys : list B}, length xs = length ys -> forall {x}, indexr x xs = None <-> indexr x ys = None.
@@ -66,10 +66,10 @@ Lemma indexr_var_some :  forall {A} {xs : list A} {i}, (exists x, indexr i xs = 
 Proof.
   induction xs; intros; split; intros. inversion H. inversion H0.
   inversion H. inversion H. simpl in H0. destruct (PeanoNat.Nat.eqb i (length xs)) eqn:Heq.
-  apply beq_nat_true in Heq. rewrite Heq. auto. inversion H.
+  apply Nat.eqb_eq in Heq. rewrite Heq. auto. inversion H.
   simpl in H. rewrite Heq in H. apply IHxs in H. simpl. lia.
   simpl. destruct (PeanoNat.Nat.eqb i (length xs)) eqn:Heq.
-  exists a. reflexivity. apply beq_nat_false in Heq. simpl in H.
+  exists a. reflexivity. apply Nat.eqb_neq in Heq. simpl in H.
   apply IHxs. lia.
 Qed.
 
@@ -85,7 +85,7 @@ Proof.
   simpl in *. lia. auto.
   simpl in H.
   destruct (PeanoNat.Nat.eqb i (length xs)) eqn:Heq.
-  discriminate. apply IHxs in H. apply beq_nat_false in Heq. simpl. lia.
+  discriminate. apply IHxs in H. apply Nat.eqb_neq in Heq. simpl. lia.
   assert (Hleq: i >= length xs). {
     simpl in H. lia.
   }
@@ -118,7 +118,7 @@ Lemma indexr_insert:  forall {A} {xs xs' : list A} {y}, indexr (length xs') (xs 
   - replace ([] ++ y :: xs') with (y :: xs'); auto. apply indexr_head.
   - simpl. rewrite IHxs. rewrite app_length. simpl.
     destruct (PeanoNat.Nat.eqb (length xs') (length xs + S (length xs'))) eqn:Heq; auto.
-    apply beq_nat_true in Heq. lia.
+    apply Nat.eqb_eq in Heq. lia.
 Qed.
 
 Lemma update_length : forall {A} {σ : list A} {l v}, length σ = length (update σ l v).
@@ -130,7 +130,7 @@ Qed.
 Lemma update_indexr_miss : forall {A} {σ : list A} {l v l'}, l <> l' ->  indexr l' (update σ l v) = indexr l' σ.
   induction σ; simpl; intuition.
   destruct (Nat.eqb l (length σ)) eqn:Hls; destruct (Nat.eqb l' (length σ)) eqn:Hl's.
-  apply beq_nat_true in Hls. apply beq_nat_true in Hl's. rewrite <- Hl's in Hls. contradiction.
+  apply Nat.eqb_eq in Hls. apply Nat.eqb_eq in Hl's. rewrite <- Hl's in Hls. contradiction.
   simpl. rewrite Hl's. auto.
   simpl. rewrite <- update_length. rewrite Hl's. auto.
   simpl. rewrite <- update_length. rewrite Hl's. apply IHσ. auto.
@@ -139,8 +139,8 @@ Qed.
 Lemma update_indexr_hit : forall {A} {σ : list A} {l v}, l < length σ -> indexr l (update σ l v) = Some v.
   induction σ; simpl; intuition.
   destruct (Nat.eqb l (length σ)) eqn:Hls.
-  apply beq_nat_true in Hls. rewrite Hls. apply indexr_head.
-  simpl. rewrite <- update_length. rewrite Hls. apply beq_nat_false in Hls.
+  apply Nat.eqb_eq in Hls. rewrite Hls. apply indexr_head.
+  simpl. rewrite <- update_length. rewrite Hls. apply Nat.eqb_neq in Hls.
   apply IHσ. lia.
 Qed.
 
@@ -148,7 +148,7 @@ Lemma update_commute : forall {A} {σ : list A} {i j vi vj}, i <> j -> (update (
   induction σ; simpl; intuition.
   destruct (Nat.eqb i (length σ)) eqn:Heq.
   - assert (Heq' : Nat.eqb j (length σ) = false).
-    apply beq_nat_true in Heq. rewrite beq_nat_false_iff. lia.
+    apply Nat.eqb_eq in Heq. rewrite Nat.eqb_neq. lia.
     rewrite Heq'. simpl. rewrite Heq'. rewrite <- update_length.
     rewrite Heq. auto.
   - destruct (Nat.eqb j (length σ)) eqn:Heq'; simpl.
@@ -176,5 +176,5 @@ Qed.
 Fixpoint delete_nth (n : nat) {A} (l : list A) : list A :=
   match l with
   | nil       => nil
-  | cons x xs => if (beq_nat n (length xs)) then xs else x :: (delete_nth n xs)
+  | cons x xs => if (Nat.eqb n (length xs)) then xs else x :: (delete_nth n xs)
   end.

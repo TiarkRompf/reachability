@@ -1,3 +1,7 @@
+(* Adapt for Coq 8.17.1 *)
+Ltac Tauto.intuition_solver ::= auto with *.
+(* Adapt for Coq 8.17.1 *)
+
 (** Lemmas and tactics for working with and solving goals related to
     non-membership in finite sets.  The main tactic of interest here
     is [notin_solve].

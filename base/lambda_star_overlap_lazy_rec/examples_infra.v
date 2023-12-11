@@ -184,7 +184,7 @@ Lemma qstp_open_qual_id2 : forall {Γ Σ d q k q'}, qstp Γ Σ q d -> open_qual 
 Qed.
 
 Lemma mem_singleton' : forall {n}, mem n (singleton n) = true.
-  intros. rewrite mem_singleton. rewrite <- beq_nat_refl. auto.
+  intros. rewrite mem_singleton. rewrite Nat.eqb_refl. auto.
 Qed.    
 
 Lemma mem_singleton_neq : forall {m n}, m <> n -> mem n (singleton m) = false.
@@ -206,7 +206,7 @@ Lemma unopen_subqual : forall {x q2 df l}, closed_qual 2 x l q2 -> closed_qual 0
     apply H2 in Hz'. apply union_1 in Hz'. intuition. apply NatSetFacts.singleton_iff in H3. subst.
     contradiction.    
   * simpl in H1. intuition. repeat rewrite empty_union_right in *.
-    rewrite empty_union_right in H1. simpl. intuition; fnsetdec.
+    simpl. intuition; fnsetdec.
   * destruct (mem 1 t1) eqn:Hmem1; simpl in *.
     ** repeat rewrite empty_union_right in *. intuition; try fnsetdec.
        intros z Hz. assert (Hz' : In z (union t0 (singleton (S x)))). fnsetdec.
@@ -294,12 +294,12 @@ Ltac set_bool_simpl :=
 
 Ltac lookup_solve :=
   match goal with
-  | [ |- (if (beq_nat ?n ?n) then _ else _) = _ ] => rewrite <- beq_nat_refl; auto; try lookup_solve
-  | [ |- (if (beq_nat ?n ?m) then _ else _) = _ ] =>
+  | [ |- (if (Nat.eqb ?n ?n) then _ else _) = _ ] => rewrite Nat.eqb_refl; auto; try lookup_solve
+  | [ |- (if (Nat.eqb ?n ?m) then _ else _) = _ ] =>
       let H := fresh "H" in
-      destruct (beq_nat n m) eqn:H;
-      try apply beq_nat_true in H;
-      try apply beq_nat_false in H;
+      destruct (Nat.eqb n m) eqn:H;
+      try apply Nat.eqb_eq in H;
+      try apply Nat.eqb_neq in H;
       try lia; lookup_solve
   | [ |- Some (_, _) = Some (_,_) ] => try solve [repeat f_equal; auto; qual_destruct; closed_qual_invert; simpl; f_equal; try set_simpl; try fnsetdec; try bound_simpl; try lia]
   end.

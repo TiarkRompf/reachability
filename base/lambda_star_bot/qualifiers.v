@@ -114,14 +114,14 @@ Definition qglb (d1 d2 : qual) : qual :=
 Definition qplus (d : qual) (x : id) : qual :=
   match d with
   | qbot => qbot
-  | q => qlub d (just_fv x)
+  | _ => qlub d (just_fv x)
   end.
 
 (* The cancelling union generalized to qualifiers as second arg *)
 Definition qqplus (q1 q2 : qual) : qual :=
   match q1 with
   | qbot => qbot
-  | q    => qlub q1 q2
+  | _    => qlub q1 q2
   end.
 
 (* The intersection as used by T-App *)

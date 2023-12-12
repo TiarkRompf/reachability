@@ -15,12 +15,18 @@ transitive closures "lazily" on demand.
 * [`Self`](lambda_star_overlap_lazy_rec_self) -- Adds function self qualifiers, permitting escaping closures.
 * [`Full`](lambda_star_full) -- Adds the bottom qualifier based on `Self`.
 
+The following variants use the new propositional set implementation:
+* [`Overlap`](lambda_star_overlap_prop_set) -- Overlap version with propositional implementation for sets.
+
+For more information regarding the propositional set implementation, please check out [Overlap Prop Set](lambda_star_overlap_prop_set/README.md)
+
 ```mermaid
 graph TD
-    subgraph oopsla[OOPSLA'21]
+    subgraph oopsla[Variant Maps]
       Base
       Bot
       Overlap
+      Overlap*
       Rec
       Lazy
       Lazy_Rec
@@ -28,15 +34,18 @@ graph TD
       Full
     end
     Base[<a title='Qualifiers are sets, functions and arguments are separate.'>Base</a>] --> Bot[<a title='Adds untracked qualifiers'>Bot</a>]
-    Base --> Overlap[<a title='Permit overlap between functions and arguments.'>Overlap</a>]
+    Base-->Overlap[<a title='Permit overlap between functions and arguments.'>Overlap</a>]
     Overlap-->Rec[<a title='Adds recursive lambda abstractions.'>Rec</a>]
     Overlap-->Lazy[<a title='Assign minimal qualifiers, transitive closure on demand.'>Lazy</a>]
+    Overlap<-->Overlap*[<a title='Overlap version with propositional set implementation'>Overlap*</a>]
     Rec-->Lazy_Rec[<a title='Merge Lazy and Rec'>Lazy Rec</a>]
     Lazy-->Lazy_Rec
     Lazy_Rec-->Self[<a title='Adds function self qualifiers.'>Self</a>]
     Bot-->Full[<a title='Merge Bot and Self'>Full</a>]
     Self-->Full
 ```
+
+> Note: We have been experimenting with a propositional set implementation on some versions for more powerful automation.  The * versions in the diagram above indicate versions with propositional set implementation.
 
 ## References
 

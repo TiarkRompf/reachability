@@ -8,7 +8,7 @@ Require Import Coq.Arith.Arith.
 Lemma beq_reflect : forall x y, reflect (x = y) (x =? y).
 Proof.
   intros x y.
-  apply iff_reflect. symmetry. apply beq_nat_true_iff.
+  apply iff_reflect. symmetry. apply Nat.eqb_eq.
 Qed.
 
 Lemma blt_reflect : forall x y, reflect (x < y) (x <? y).
@@ -32,3 +32,4 @@ Ltac bdestruct X :=
                     | destruct H as [H|H];
                       [ | try first [apply not_lt in H | apply not_le in H] ] ].
 
+Ltac Tauto.intuition_solver ::= auto with *.

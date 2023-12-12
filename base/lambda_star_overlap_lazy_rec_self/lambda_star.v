@@ -61,7 +61,7 @@ Fixpoint open_rec_tm (k : nat) (u : tm) (t : tm) {struct t} : tm :=
   match t with
   | tunit            => tunit
   | tvar   (varF x) => tvar (varF x)
-  | tvar   (varB x) => if beq_nat k x then u else tvar (varB x)
+  | tvar   (varB x) => if Nat.eqb k x then u else tvar (varB x)
   | tabs    t       => tabs    (open_rec_tm (S (S k)) u t)
   | tapp    t1 t2   => tapp    (open_rec_tm k u t1) (open_rec_tm k u t2)
   | tloc    l       => tloc l
@@ -383,7 +383,7 @@ Fixpoint subst_tm (t : tm) (v : nat) (u : tm) : tm :=
   match t with
   | tunit         => tunit
   | # x           => # x
-  | $ x           => if beq_nat x v then u else $(pred x)
+  | $ x           => if Nat.eqb x v then u else $(pred x)
   | tabs t        => tabs (subst_tm t v u)
   | tapp t1 t2    => tapp (subst_tm t1 v u) (subst_tm t2 v u)
   | & l           => & l
@@ -654,7 +654,7 @@ Qed.
 Lemma closed_tm_open_id : forall {t b f l}, closed_tm b f l t -> forall {n}, b <= n -> forall {x}, (open_rec_tm n x t) = t.
   intros t b f l H. induction H; intros; simpl; auto;
     try solve [erewrite IHclosed_tm1; eauto; erewrite IHclosed_tm2; eauto; lia | erewrite IHclosed_tm; eauto; lia].
-  destruct (Nat.eqb n x) eqn:Heq; auto. apply beq_nat_true in Heq. lia.
+  destruct (Nat.eqb n x) eqn:Heq; auto. apply Nat.eqb_eq in Heq. lia.
 Qed.
 
 Lemma closed_qual_open_id : forall {d b f l},
@@ -687,7 +687,7 @@ Lemma closed_tm_open : forall {T b f l}, closed_tm (S b) f l T -> forall {x}, x 
   induction T; intros; simpl; intuition; inversion H; subst; try constructor;
   try solve [apply IHT1; auto | apply IHT2; auto | apply IHT; auto ].
   destruct (Nat.eqb b x0) eqn:Heq; intuition.
-  apply beq_nat_false in Heq. constructor. lia. auto. auto.
+  apply Nat.eqb_neq in Heq. constructor. lia. auto. auto.
 Qed.
 
 Lemma closed_qual_open : forall {d b f l},
@@ -735,7 +735,7 @@ Lemma closed_tm_open' : forall {T b f l}, closed_tm (S b) f l T -> forall {x}, x
   induction T; intros; simpl; intuition; inversion H; subst; try constructor;
   try solve [eapply IHT1; eauto | eapply IHT2; eauto | eapply IHT; eauto ].
   destruct (Nat.eqb b x0) eqn:Heq; intuition. eapply closed_tm_monotone; eauto; lia.
-  apply beq_nat_false in Heq. constructor. lia. auto. auto.
+  apply Nat.eqb_neq in Heq. constructor. lia. auto. auto.
 Qed.
 
 Lemma closed_qual_open' : forall {d b f l},
@@ -775,7 +775,7 @@ Lemma closed_tm_open_ge : forall {T b f l}, closed_tm (S b) f l T -> forall {x},
   induction T; intros; simpl; intuition; inversion H; subst; try constructor;
       try solve [eapply IHT1; eauto | eapply IHT2; eauto | eapply IHT; eauto ].
   destruct (Nat.eqb b x0) eqn:Heq. intuition.
-  apply beq_nat_false in Heq. inversion H. subst.
+  apply Nat.eqb_neq in Heq. inversion H. subst.
   constructor. lia. lia. auto.
 Qed.
 
@@ -815,7 +815,7 @@ Lemma closed_open_succ : forall {T b f l}, closed_tm b f l T -> forall {j}, clos
   induction T; intros; simpl; intuition; inversion H; subst; try constructor;
     try solve [eapply IHT1; eauto | eapply IHT2; eauto | eapply IHT; eauto ].
     destruct (Nat.eqb j x) eqn:Heq. intuition.
-    apply beq_nat_false in Heq. inversion H. subst. intuition. lia. auto.
+    apply Nat.eqb_neq in Heq. inversion H. subst. intuition. lia. auto.
 Qed.
 
 Lemma closed_qual_open_succ : forall {d b f l},
@@ -849,7 +849,7 @@ Lemma open_rec_tm_commute : forall t i j x y, i <> j -> open_rec_tm i (varF x) (
   destruct v. intuition.
   destruct (Nat.eqb i i0) eqn:Hii0; destruct (Nat.eqb j i0) eqn:Hji0; simpl;
     try rewrite Hii0; try rewrite Hji0; auto.
-  apply beq_nat_true in Hii0. apply beq_nat_true in Hji0. subst. contradiction.
+  apply Nat.eqb_eq in Hii0. apply Nat.eqb_eq in Hji0. subst. contradiction.
 Qed.
 
 Lemma open_qual_commute : forall d i j x y, i <> j -> open_qual i (just_fv x) (open_qual j (just_fv y) d) = open_qual j (just_fv y) (open_qual i (just_fv x) d).
@@ -895,7 +895,7 @@ Lemma open_rec_tm_commute' : forall t i j x t' f l, i <> j -> closed_tm 0 f l t'
   destruct v. intuition.
   destruct (Nat.eqb i i0) eqn:Hii0; destruct (Nat.eqb j i0) eqn:Hji0; simpl;
     try rewrite Hii0; try rewrite Hji0; auto.
-  apply beq_nat_true in Hii0. apply beq_nat_true in Hji0. subst. contradiction.
+  apply Nat.eqb_eq in Hii0. apply Nat.eqb_eq in Hji0. subst. contradiction.
   eapply closed_tm_open_id; eauto. lia.
 Qed.
 
@@ -951,7 +951,7 @@ Lemma open_rec_tm_commute'' : forall t i j t' t'' f l, i <> j -> closed_tm 0 f l
   destruct v. intuition.
   destruct (Nat.eqb i i0) eqn:Hii0; destruct (Nat.eqb j i0) eqn:Hji0; simpl;
     try rewrite Hii0; try rewrite Hji0; auto.
-  apply beq_nat_true in Hii0. apply beq_nat_true in Hji0. subst. contradiction.
+  apply Nat.eqb_eq in Hii0. apply Nat.eqb_eq in Hji0. subst. contradiction.
   symmetry. eapply closed_tm_open_id; eauto. lia. eapply closed_tm_open_id; eauto. lia.
 Qed.
 
@@ -1023,7 +1023,7 @@ Lemma open_qual_just_loc : forall i d x, open_qual i d (just_loc x) = (just_loc 
 Qed.
 
 Lemma open_rec_tm_bv : forall i t, open_rec_tm i t (#i) = t.
-  intros. simpl. rewrite <- beq_nat_refl. auto.
+  intros. simpl. rewrite Nat.eqb_refl. auto.
 Qed.
 
 Lemma open_rec_tm_bv_skip : forall j i t, j <> i -> open_rec_tm j t (#i) = #i.
@@ -2027,7 +2027,7 @@ Qed.
 
 Lemma CtxOK_ext : forall {Γ φ Σ σ}, CtxOK Γ φ Σ σ -> forall {v T}, has_type Γ φ Σ v T ∅ -> value v -> CtxOK Γ φ (T :: Σ) (v :: σ).
   intros. unfold CtxOK in *. split. simpl. lia.
-  intros. destruct H as [Hlen Hprev]. destruct (beq_nat l (length σ)) eqn:Heql.
+  intros. destruct H as [Hlen Hprev]. destruct (Nat.eqb l (length σ)) eqn:Heql.
   - simpl in *. rewrite Heql in *. inversion H3. subst.
     rewrite <- Hlen in Heql. rewrite Heql in H2. inversion H2. subst. intuition.
     eapply weaken_store; eauto. apply extends_cons.
@@ -2040,10 +2040,10 @@ Lemma CtxOK_update : forall {Γ φ Σ σ}, CtxOK Γ φ Σ σ -> forall {l T}, l 
   intros. unfold CtxOK in *. destruct H as [Hlen Hprev].
   split. rewrite <- update_length. auto.
   intros. destruct (Nat.eqb l l0) eqn:Heq.
-  - apply beq_nat_true in Heq. subst.
+  - apply Nat.eqb_eq in Heq. subst.
     apply (@update_indexr_hit _ σ l0 v) in H0. rewrite H1 in H. inversion H. subst.
     rewrite H4 in H0. inversion H0. subst. intuition.
-  - apply beq_nat_false in Heq. apply (@update_indexr_miss _ σ l v l0) in Heq.
+  - apply Nat.eqb_neq in Heq. apply (@update_indexr_miss _ σ l v l0) in Heq.
     rewrite Heq in H4. eapply Hprev; eauto.
 Qed.
 
@@ -2799,7 +2799,7 @@ Lemma substitution_gen :
     + rewrite indexr_skips' in H0'; try solve [simpl; lia]. destruct f; try lia. simpl in H0'.
       rewrite <- subst1_just_fv. eapply t_self.
       rewrite subst1_qual_plus_dist in IHHT. simpl in IHHT. eauto. lia.
-      rewrite <- minus_n_O in H0'. apply @indexr_subst1 with (dx:=dx') in H0; try lia. simpl in H0.
+      rewrite Nat.sub_0_r in H0'. apply @indexr_subst1 with (dx:=dx') in H0; try lia. simpl in H0.
       eauto. eapply closed_qual_subst1; eauto.
   - apply t_sub with (T1:={ 0 |-> dx' }ᵀ T1) (d1:={ 0 |-> dx' }ᵈ d1).
     eapply IHHT; eauto. eapply subst_stp; eauto. apply subst_qual_subqual_monotone; auto.
@@ -2937,7 +2937,7 @@ Lemma open_qual_just_bv_skip: forall {i j d}, j <> i -> [[ j ~> d ]]ᵈ (just_bv
 Qed.
 
 Lemma open_qual_just_bv: forall {i d}, [[ i ~> d ]]ᵈ (just_bv i) = d.
-  intros. simpl. destruct d. rewrite mem_singleton. rewrite <- beq_nat_refl. qdec.
+  intros. simpl. destruct d. rewrite mem_singleton. rewrite Nat.eqb_refl. qdec.
 Qed.
 
 Lemma openq_u_distribute1 : forall {df d1 d2 l},

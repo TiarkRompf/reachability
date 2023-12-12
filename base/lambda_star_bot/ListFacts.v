@@ -1,3 +1,7 @@
+(* Adapt for Coq 8.17.1 *)
+Ltac Tauto.intuition_solver ::= auto with *.
+(* Adapt for Coq 8.17.1 *)
+
 (** Assorted facts about lists.
 
     Author: Brian Aydemir.

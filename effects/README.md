@@ -4,12 +4,14 @@
 
 The $λ^*_\varepsilon$-calculus [1] and variants, combining reachability with flow-(in)sensitive effects. More versions are forthcoming.
 
-* [`Base`](lambda_star_effect_base) -- The base version of $\lambda^*$ with a simple flow-insensitive effect system.
+* [`Base`](./lambda_star_effect_base) -- The base version of $\lambda^*$ with a simple flow-insensitive effect system.
+* [`Kill`](./lambda_star_kill) -- The version of $\lambda^*$ with use and kill effect.
 
 ```mermaid
 graph TD
     subgraph poly[Effects]
       Base
+	  Kill
     end
 ```
 

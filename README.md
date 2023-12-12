@@ -4,15 +4,15 @@ Reachability types are a new take on modeling lifetimes and sharing in high-leve
 
 ## Mechanization Overview
 
-* [`base`](./base/) -- Coq mechanization of the $λ^*$-calculus [1] and its variations, gradually increasing in complexity.
+* [`base`](/base/) -- Coq mechanization of the $λ^*$-calculus [1] and its variations, gradually increasing in complexity.
 
-* [`effects`](./effects/) -- Coq mechanization of the $λ_\varepsilon^*$-calculus [1] and its variations, gradually increasing in complexity.
+* [`effects`](/effects/) -- Coq mechanization of the $λ_\varepsilon^*$-calculus [1] and its variations, gradually increasing in complexity.
 
-* [`polymorphism`](./polymorphism/) -- Coq mechanization of the $λ^\diamond$-calculus [2] and its variations, featuring a refined reachability model that scales to parametric type polymorphism.
+* [`polymorphism`](/polymorphism/) -- Coq mechanization of the $λ^\diamond$-calculus [2] and its variations, featuring a refined reachability model that scales to parametric type polymorphism.
 
-* [`log-rel-unary`](./log-rel-unary/) -- Unary logical relations for proving semantic type soundness and termination of $λ^\diamond$, $λ_\varepsilon^\diamond$, and its variants [4].
+* [`log-rel-unary`](/log-rel-unary/) -- Unary logical relations for proving semantic type soundness and termination of $λ^\diamond$, $λ_\varepsilon^\diamond$, and its variants [4].
 
-* [`log-rel-binary`](./log-rel-binary/) -- Binary logical relations for establishing equational reasoning about $λ^\diamond$, $λ_\varepsilon^\diamond$, and its variants [4].
+* [`log-rel-binary`](/log-rel-binary/) -- Binary logical relations for establishing equational reasoning about $λ^\diamond$, $λ_\varepsilon^\diamond$, and its variants [4].
 
 
 ## Prototype Implementations

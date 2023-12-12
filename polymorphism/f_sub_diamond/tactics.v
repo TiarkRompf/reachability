@@ -32,3 +32,4 @@ Ltac bdestruct X :=
                     | destruct H as [H|H];
                       [ | try first [apply not_lt in H | apply not_le in H] ] ].
 
+Ltac Tauto.intuition_solver ::= auto with *.

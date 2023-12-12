@@ -171,15 +171,15 @@ Definition env_type M H G :=
           val_type M v T.
 
 
-Hint Constructors ty.
-Hint Constructors tm.
-Hint Constructors vl.
+#[global] Hint Constructors ty.
+#[global] Hint Constructors tm.
+#[global] Hint Constructors vl.
 
 
-Hint Constructors has_type.
+#[global] Hint Constructors has_type.
 
-Hint Constructors option.
-Hint Constructors list.
+#[global] Hint Constructors option.
+#[global] Hint Constructors list.
 
 Import Coq.Arith.PeanoNat.
 

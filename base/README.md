@@ -47,8 +47,12 @@ graph TD
 
 > Note: We have been experimenting with a propositional set implementation on some versions for more powerful automation.  The * versions in the diagram above indicate versions with propositional set implementation.
 
+## Acknowledgements
+
+The initial mechanizations reuse some libraries by the [UPenn PL Club](https://www.cis.upenn.edu/~plclub/popl08-tutorial/code/index.html) that complement the FSet library shipping with [Coq](https://coq.inria.fr/distrib/current/stdlib/Coq.FSets.FSetInterface.html). We set up the FSet library with extensional equality as inspired by [Boruch-Gruszecki et al.](https://arxiv.org/abs/2105.11896)'s artifact.
+
 ## References
 
 [1] **Reachability Types: Tracking Aliasing and Separation in Higher-order Functional Programs** (OOPSLA 2021)</br>
-by Yuyan Bao, Guannan Wei, Oliver Bračevac, Luke Jiang, Qiyang He, and Tiark Rompf
+Yuyan Bao, Guannan Wei, Oliver Bračevac, Luke Jiang, Qiyang He, and Tiark Rompf
 ([pdf](https://dl.acm.org/doi/10.1145/3485516)).

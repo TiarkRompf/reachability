@@ -119,16 +119,16 @@ Definition env_type H G :=
    exists v : vl, exp_type H (tvar x) v T1.
 
 
-Hint Constructors ty.
-Hint Constructors tm.
-Hint Constructors vl.
+#[global] Hint Constructors ty.
+#[global] Hint Constructors tm.
+#[global] Hint Constructors vl.
 
 
-Hint Constructors has_type.
+#[global] Hint Constructors has_type.
 (* Hint Constructors val_type. *)
 
-Hint Constructors option.
-Hint Constructors list.
+#[global] Hint Constructors option.
+#[global] Hint Constructors list.
   
 Lemma expt_extend: forall H x v vx T,
     exp_type H (tvar x) v T ->

@@ -80,7 +80,7 @@ Section QPoly.
       apply s_all; ccrush.
       apply s_fun; ccrush.
       apply stp_refl; ccrush. apply stp_refl; ccrush. apply qs_sq; ccrush. all : crush.
-    * change_qual ({♦} ⊔ ∅). apply t_ref; auto.
+    * change_qual ({♦} ⊔ ∅).
   Qed.
 
   (* The fakeid function *)
@@ -191,8 +191,7 @@ Section Closures.
     change_qual (openq ∅ ({♦} ⊔ ∅) #!1).
     change_type (({TUnit | ∅} ==> {TRef ∅ TUnit | #! 0}) <~ᵀ TUnit ~ ∅; TRef ∅ TUnit ~ ({♦} ⊔ ∅)).
     eapply t_let_fresh with (q1':={♦}) (df':=∅); try solve [ccrush].
-    * apply t_ref; ccrush.
-    * cleanup. apply t_abs; ccrush.
+    cleanup. apply t_abs; ccrush.
       (* now use subtyping for the f (= $2) self-ref abstraction *)
       eapply t_sub. eapply t_var; ccrush. 2,3 : ccrush.
       apply stp_refl; ccrush.

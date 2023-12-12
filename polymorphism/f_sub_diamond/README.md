@@ -8,7 +8,7 @@
 * [`examples_cell_opaque.v`](examples_cell_opaque.v) -- Example: Demonstrating opaque Church encodings for scope transfers on a single Cell type.
 * [`examples_pairs.v`](examples_pairs.v): Data type examples from Section 2, including Figure 1 (counter, `Section OpaquePairEndToEnd`), transparent vs. opaque pairs, and conversion of the former into the latter.
 
-### Tips to get Started
+### Tips to Get Started
 
 * The mechanization uses locally nameless, where free variables are deBruijn *levels* (prefixed with `$`) and bound variables are deBruijn *indices* (prefixed with `#`). Numeric store locations are prefixed with `&`.
 * Study the notations for qualifiers in [`qualifiers.v`](qualifiers.v).

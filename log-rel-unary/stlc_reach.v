@@ -77,29 +77,33 @@ Inductive closed_ty: nat -> ty -> Prop :=
 (* assume no overlap *)
 Inductive has_type : tenv -> tm -> ty -> ql -> ql -> Prop :=
 | t_true: forall env p,
-    has_type env ttrue TBool p qempty   
+    has_type env ttrue TBool p qempty   (* nobody can reach *) (* p is the phi *)
 | t_false: forall env p,
     has_type env tfalse TBool p qempty
 | t_var: forall x env T1 p,
     indexr x env = Some T1 ->
-    p x = true ->              
-    has_type env (tvar x) T1 p (qone x)   
+    p x = true ->              (*  x in phi *)
+    has_type env (tvar x) T1 p (qone x)   (* x can reach itself *)
 | t_app: forall env f t T1 T2 p qf q1 q2,
     has_type env f (TFun T1 (* qempty  *) T2 q2) p qf->  
-    has_type env t T1 p q1 ->     
-    qsub (qand qf q1) qempty ->           
-    has_type env (tapp f t) T2 p (qor q2 q1)  
-| t_abs: forall env t T1 T2 p q2 qf, 
+    has_type env t T1 p q1 ->     (* q1 <:p *)
+    qsub (qand qf q1) qempty ->   (* no overlapping *)
+    (* qsub q2 p -> *)
+    has_type env (tapp f t) T2 p (qor q2 q1)  (* q2 + q1 <: p *)
+| t_abs: forall env t T1 T2 p q2 qf, (* assume argument is tracked *)
     has_type (T1::env) t T2 (qor (qand p qf) (qone (length env))) (qor q2 (qone (length env))) ->  (*q2+\{x\} <: (p\cap qf) + x*)
     closed_ty (length env) T1 ->
     closed_ty (length env) T2 ->
     closed_ql (length env) q2 ->
     closed_ql (length env) qf ->
-    has_type env (tabs t) (TFun T1 T2 q2) p qf 
+    (* qsub q2 qf -> *)
+    (* qsub qf p -> *)
+    has_type env (tabs t) (TFun T1 T2 q2) p qf (*qf <: p ? *)
 | t_sub: forall env y T p q1 q2,
     has_type env y T p q1 ->
     qsub q1 q2 ->
     qsub q2 (qdom env)  ->
+    (* qsub q2 p -> *)
     has_type env y T p q2
 .
 
@@ -153,7 +157,7 @@ Fixpoint val_type (H:venv) v T (p:ql) (q:ql) : Prop :=
   | vabs G ty, TFun T1 (* qempty *) T2 q2 => 
       closed_ty (length H) T1 /\
       closed_ty (length H) T2 /\
-      qsub q2 (qdom H) /\ 
+      qsub q2 (qdom H) /\ (* wanted q2 < q, need q2 < p or < qdom H *)
       qsub q (qdom H) /\
       qsub p (qdom H) /\  
         (forall vx,
@@ -167,8 +171,8 @@ Fixpoint val_type (H:venv) v T (p:ql) (q:ql) : Prop :=
               exists vy,
                 tevaln
                   (vx::G)
-                  ty      
-                  vy      
+                  ty      (* body *)
+                  vy      (* reduce to value *)
                 /\
                   val_type
                     H
@@ -193,18 +197,18 @@ Definition env_type H G p :=
         p x = true ->
         exists v : vl,
           indexr x H = Some v /\
-            val_type H v T p (qone x)) 
+            val_type H v T p (qone x))  (* always tracked *)
 .
 
-Hint Constructors ty.
-Hint Constructors tm.
-Hint Constructors vl.
+#[global] Hint Constructors ty.
+#[global] Hint Constructors tm.
+#[global] Hint Constructors vl.
 
 
-Hint Constructors has_type.
+#[global] Hint Constructors has_type.
 
-Hint Constructors option.
-Hint Constructors list.
+#[global] Hint Constructors option.
+#[global] Hint Constructors list.
 
 Lemma wf_env_type: forall H G P, 
   env_type H G P -> 
@@ -480,6 +484,10 @@ Proof.
     eapply qsub_trans; eauto. 
 Qed.
 
+
+(* it seems like this can't work once we add store locations:
+   vx may overlap with v, so under a filter that makes vx
+   observable, q will need to grow, too *)
 Lemma valt_extend1: forall T H v vx p q,
     val_type H v T p q ->
     val_type (vx::H) v T (qor p (qone (length H))) q. 
@@ -546,6 +554,8 @@ Lemma valt_add_to_env: forall T H v p,
 Proof.
   intros. eapply valt_sub. eapply valt_extend1; eauto.
   eauto. eauto. apply qsub_one_dom. simpl. lia.
+  (* this seems too easy? see note above. we shouldn't be able
+     to prove this just via valt_extend1  *)
 Qed.
 
 Lemma valt_app_arg: forall T1 H vx p q1 qf,
@@ -579,6 +589,7 @@ Proof.
     eapply valt_sub. eapply valt_loosen. eauto.
     eauto. eauto. eauto. eauto. eauto.
   }
+  (* very fishy! q1 doesn't appear to be needed *)
   eapply valt_sub. eauto. eauto. eauto.
   rewrite <- qand_associative. rewrite qand_commutative with (p := qf).
   rewrite qand_associative. auto.
@@ -685,7 +696,7 @@ Proof.
       (* eapply valt_qual_widen1. *)    
       eapply valt_app_res. eapply HVY. eauto.
       eauto. eapply valt_qual_wf. eauto.
-      auto. 
+      auto. (* q2 wf: get from W1: has_type (TFun T1 T2 q2) *)
       eauto. 
 
   - (* Case "Abs". *)

@@ -209,7 +209,7 @@ Inductive closed_ty : nat(*B*) -> nat(*F*) -> nat(*Loc*) -> ty -> Prop :=
 | cl_TUnit : forall b f l,
     closed_ty b f l TUnit
 | cl_TRef : forall b f l T q,
-    closed_ty 0 0 0 T ->
+    closed_ty b f l T ->
     closed_qual b f l q ->
     closed_ty b f l (TRef q T)
 | cl_TFun : forall b f l d1 d2 T1 T2,
@@ -250,12 +250,13 @@ Inductive stp : tenv -> senv -> ty -> qual -> ty -> qual -> Prop :=
 | s_base : forall Γ Σ d1 d2,
     qstp Γ Σ d1 d2 ->
     stp Γ Σ TUnit d1 TUnit d2
-| s_ref : forall Γ Σ T1 T2 q d1 d2,
+| s_ref : forall Γ Σ T1 T2 q1 q2 d1 d2,
     qstp Γ Σ d1 d2 ->
-    stp [] [] T1 ∅ T2 ∅ ->
-    stp [] [] T2 ∅ T1 ∅ ->
-    closed_qual 0 (‖Γ‖) (‖Σ‖) q ->
-    stp Γ Σ (TRef q T1) d1 (TRef q T2) d2
+    stp Γ Σ T1 ∅ T2 ∅ ->
+    stp Γ Σ T2 ∅ T1 ∅ ->
+    qstp Γ Σ q1 q2 ->
+    qstp Γ Σ q2 q1 ->
+    stp Γ Σ (TRef q1 T1) d1 (TRef q2 T2) d2
 | s_fun : forall Γ Σ T1 d1 T2 d2 T3 d3 T4 d4 d5 d6,
     closed_ty 0 (‖ Γ ‖) (‖ Σ ‖) (TFun d1 d2 T1 T2) ->
     closed_ty 0 (‖ Γ ‖) (‖ Σ ‖) (TFun d3 d4 T3 T4) ->
@@ -366,7 +367,7 @@ Inductive has_type : tenv -> qual -> senv -> tm -> ty -> qual -> Prop :=
 | t_loc : forall Γ φ Σ l T q,
     closed_qual 0 (‖Γ‖) (‖Σ‖) φ ->
     indexr l Σ = Some (T,q) ->
-    closed_ty 0 0 0 T ->
+    closed_ty 0 0 (‖Σ‖) T ->
     closed_qual 0 0 (‖Σ‖) q ->
     &!l ⊑ φ ->
     q ⊑ φ ->
@@ -375,7 +376,7 @@ Inductive has_type : tenv -> qual -> senv -> tm -> ty -> qual -> Prop :=
 
 | t_ref: forall Γ φ Σ T t d1,
     has_type Γ φ Σ t T d1 ->
-    closed_ty 0 0 0 T ->
+    closed_ty 0 (‖Γ‖) (‖Σ‖) T ->
     {♦} ⊑ φ ->
     ♦∉ d1 ->
     has_type Γ φ Σ (tref t) (TRef d1 T) ({♦} ⊔ d1)
@@ -545,11 +546,11 @@ Inductive vtp: senv -> tm -> ty -> qual -> Prop :=
 
 | vtp_loc:  forall Σ l T U q d,
   closed_qual 0 0 (‖Σ‖) d ->
-  closed_ty 0 0 0 T ->
+  closed_ty 0 0 (‖Σ‖) T ->
   closed_qual 0 0 (‖Σ‖) q ->
   indexr l Σ = Some (T,q) ->
-  stp [] [] T ∅ U ∅ ->
-  stp [] [] U ∅ T ∅ ->
+  stp [] Σ T ∅ U ∅ ->
+  stp [] Σ U ∅ T ∅ ->
   qstp [] Σ (q ⊔ &!l) d ->
   ♦∉ q ->
   senv_saturated Σ d ->
@@ -788,11 +789,10 @@ Qed.
 Lemma closed_ty_open : forall {T fr b f l}, closed_ty (S b) f l T -> forall {x}, x < f -> closed_ty b f l ([[ b ~> ${fr}x ]]ᵀ T).
   induction T; intros; simpl; intuition; inversion H; subst; try constructor;
     try solve [apply IHT1; auto | apply IHT2; auto | apply IHT; auto ].
-  1,2,4 : eapply closed_qual_open; eauto.
-  erewrite closed_ty_open_id; eauto. lia.
+  1,2,3 : eapply closed_qual_open; eauto.
 Qed.
 
-Lemma closed_tm_open' : forall {t b f l}, closed_tm (S b) f l t -> forall {x}, x <= f -> forall {t'}, closed_tm 0 x l t' -> closed_tm b f l ([[ b ~> t' ]]ᵗt).
+Lemma closed_tm_open' : forall {t b f l}, closed_tm (S b) f l t -> forall {x}, x <= f -> forall {t'}, closed_tm 0 x l t' -> closed_tm b f l ([[ b ~> t' ]]ᵗ t).
   induction t; intros; simpl; intuition; inversion H; subst; try constructor;
   try solve [eapply IHt1; eauto | eapply IHt2; eauto | eapply IHt; eauto ].
   destruct (Nat.eqb b x0) eqn:Heq; intuition. eapply closed_tm_monotone; eauto; lia.
@@ -828,8 +828,7 @@ Qed.
 Lemma closed_ty_open' : forall {T b f l}, closed_ty (S b) f l T -> forall {x}, x <= f -> forall {d}, closed_qual 0 x l d -> closed_ty b f l ([[ b ~> d ]]ᵀ T).
   induction T; intros; simpl; intuition; inversion H; subst; try constructor;
     try solve [eapply IHT1; eauto | eapply IHT2; eauto | eapply IHT; eauto ].
-  1,2,4 : eapply closed_qual_open'; eauto.
-  erewrite closed_ty_open_id; eauto. lia.
+  1,2,3 : eapply closed_qual_open'; eauto.
 Qed.
 
 Lemma closed_tm_open_ge : forall {t b f l}, closed_tm (S b) f l t -> forall {x}, f <= x -> closed_tm b (S x) l ([[ b ~> $x ]]ᵗ t).
@@ -868,8 +867,7 @@ Qed.
 Lemma closed_ty_open_ge : forall {T fr b f l}, closed_ty (S b) f l T -> forall {x}, f <= x -> closed_ty b (S x) l ([[ b ~> ${fr}x ]]ᵀ T).
   induction T; intros; simpl; intuition; inversion H; subst; try constructor;
     try solve [eapply IHT1; eauto | eapply IHT2; eauto | eapply IHT; eauto ].
-  1,2,4 :eapply closed_qual_open_ge; eauto.
-  erewrite closed_ty_open_id; eauto. lia.
+  1,2,3 :eapply closed_qual_open_ge; eauto.
 Qed.
 
 Lemma closed_open_succ : forall {t b f l}, closed_tm b f l t -> forall {j}, closed_tm b (S f) l ([[ j ~> $f ]]ᵗ t).
@@ -894,8 +892,7 @@ Qed.
 Lemma closed_ty_open_succ : forall {T fr b f l}, closed_ty b f l T -> forall {j}, closed_ty b (S f) l ([[ j ~> ${fr}f ]]ᵀ T).
   induction T; intros; simpl; intuition; inversion H; subst; try constructor;
     try solve [eapply IHT1; eauto | eapply IHT2; eauto | eapply IHT; eauto ].
-  1,2,4 :eapply closed_qual_open_succ; eauto.
-  erewrite closed_ty_open_id; eauto. lia.
+  1,2,3 :eapply closed_qual_open_succ; eauto.
 Qed.
 
 Lemma closed_tm_open_succ : forall {t b f l}, closed_tm b f l t -> forall {j}, closed_tm b (S f) l ([[ j ~> $f ]]ᵗ t).
@@ -1097,7 +1094,7 @@ Lemma splice_ty_id : forall {T b f l}, closed_ty b f l T -> T ↑ᵀ f = T.
   repeat erewrite splice_qual_id; eauto.
   erewrite IHT1; eauto. erewrite IHT2; eauto.
   erewrite splice_qual_id; eauto.
-  erewrite IHT; eauto. eapply closed_ty_monotone; eauto. lia.
+  erewrite IHT; eauto.
 Qed.
 
 Lemma splice_open : forall {T j n m}, ([[ j ~> $(m + n) ]]ᵗ T) ↑ᵗ n = [[ j ~> $(S (m + n)) ]]ᵗ (T ↑ᵗ n).
@@ -1163,7 +1160,7 @@ Qed.
 Lemma splice_ty_closed : forall {T b n m l}, closed_ty b (n + m) l T -> forall {i}, i <= m -> closed_ty b (S (n + m)) l (T ↑ᵀ i).
   induction T; simpl; intros; inversion H; subst; intuition.
   constructor. 1,2 : apply splice_qual_closed; auto. all: intuition.
-  constructor. erewrite splice_ty_id; eauto. eapply closed_ty_monotone; eauto. lia.
+  constructor. intuition.
   apply splice_qual_closed; auto.
 Qed.
 
@@ -1196,8 +1193,7 @@ Qed.
 
 Lemma splice_ty_closed'' : forall {T x b l k}, closed_ty b x l T -> k <= x -> closed_ty b (S x) l (T ↑ᵀ k).
   induction T; simpl; intros; inversion H; subst; constructor; intuition.
-  1,2,4 : eapply splice_qual_closed''; eauto. erewrite splice_ty_id; eauto.
-  eapply closed_ty_monotone; eauto. lia.
+  1,2,3 : eapply splice_qual_closed''; eauto.
 Qed.
 
 Lemma splice_open_succ : forall {T b n l j}, closed_tm b n l T -> ([[ j ~> $n ]]ᵗ T) ↑ᵗ n = [[ j ~> $ (S n) ]]ᵗ T.
@@ -1220,10 +1216,8 @@ Qed.
 Lemma splice_ty_open_succ : forall {T b fr n l j}, closed_ty b n l T -> ([[ j ~> ${fr} n ]]ᵀ T) ↑ᵀ n = [[ j ~> ${fr} (S n) ]]ᵀ T.
   induction T; simpl; intros; inversion H; subst; auto.
   erewrite splice_qual_open_succ; eauto. erewrite splice_qual_open_succ; eauto.
-  erewrite IHT1; eauto. erewrite IHT2; eauto.
+  erewrite IHT1; eauto. erewrite IHT2; eauto. erewrite IHT; eauto.
   erewrite splice_qual_open_succ; eauto.
-  erewrite closed_ty_open_id; eauto. erewrite closed_ty_open_id; eauto.
-  erewrite splice_ty_id; eauto. eapply closed_ty_monotone; eauto. all : lia.
 Qed.
 
 Lemma splice_qual_open_qual : forall {k n df d2}, ([[n ~> df ]]ᵈ d2) ↑ᵈ k = ([[n ~> df ↑ᵈ k ]]ᵈ (d2 ↑ᵈ k)).
@@ -1354,7 +1348,7 @@ Lemma stp_closed : forall {Γ Σ T1 d1 T2 d2},
     /\ closed_qual 0 (‖Γ‖) (‖Σ‖) d2.
 Proof.  intros Γ Σ T1 d1 T2 d2 HS. induction HS.
   - intuition. all: apply qstp_closed in H; intuition.
-  - intuition. all: apply qstp_closed in H; intuition.
+  - intuition. all: apply qstp_closed in H, H0, H1; intuition.
   - intuition. apply qstp_closed in H1; intuition. apply qstp_closed in H1; intuition.
   (* - intuition; repeat apply closed_qual_qlub; auto. *)
 Qed.
@@ -1502,13 +1496,14 @@ Lemma weaken_stp_gen : forall {Γ1 Γ2 Σ T1 d1 T2 d2},  stp (Γ1 ++ Γ2) Σ T1 
     forall T', stp ((Γ1 ↑ᴳ ‖Γ2‖) ++ T' :: Γ2) Σ (T1 ↑ᵀ ‖Γ2‖) (d1 ↑ᵈ ‖Γ2‖) (T2 ↑ᵀ ‖Γ2‖) (d2 ↑ᵈ ‖Γ2‖).
 Proof. intros Γ1 Γ2 Σ T1 d1 T2 d2  Hstp T'. remember (Γ1 ++ Γ2)  as Γ. generalize dependent Γ1.  induction Hstp. intros Γ1.
   - constructor. eapply weaken_qstp_gen. subst. auto.
-  - intros. assert (stp Γ Σ (TRef q T1) d1 (TRef q T2) d2). { constructor; intuition. } subst.
-    apply stp_closed in H1 as Hcl. intuition.
-    inversion H2. inversion H3. subst.
-    constructor. apply weaken_qstp_gen. subst; auto. 1,2: fold splice_ty. apply stp_closed in H1 as Hcl. intuition.
-    1,2 : replace (T1 ↑ᵀ ‖Γ2‖) with T1; replace (T2 ↑ᵀ ‖Γ2‖) with T2; intuition.
-    1-6 : erewrite splice_ty_id; eauto; eapply closed_ty_monotone; eauto; intuition.
-    apply splice_qual_closed'. rewrite app_length in *. rewrite splice_tenv_length. auto.
+  - intros. assert (stp Γ Σ (TRef q1 T1) d1 (TRef q2 T2) d2). { constructor; intuition. } subst.
+    apply stp_closed in H2 as Hcl. intuition.
+    inversion H3. inversion H4. subst. simpl.
+    specialize (IHHstp1 Γ1). intuition.
+    specialize (IHHstp2 Γ1). intuition.
+    constructor. apply weaken_qstp_gen. subst; auto.
+    1,2 : rewrite splice_qual_empty in H6, H8; auto.
+    all: apply weaken_qstp_gen; auto.
   - assert (stp Γ Σ (TFun d1 d2 T1 T2) d5 (TFun d3 d4 T3 T4) d6). { constructor; intuition. } intros.
     subst. intuition. inversion H0; inversion H; subst. apply qstp_closed in H1 as Hcl. intuition.
     constructor; try fold splice_ty. 1-2: constructor.
@@ -1544,7 +1539,7 @@ Qed.
 Lemma weaken_stp_store : forall {Σ Γ T1 d1 T2 d2}, stp Γ Σ T1 d1 T2 d2 -> forall Σ', stp Γ (Σ' ++ Σ) T1 d1 T2 d2.
 Proof. intros Σ Γ T1 d1 T2 d2 HSTP. induction HSTP; intros.
   + constructor. apply weaken_qstp_store. auto.
-  + constructor; auto. apply weaken_qstp_store. auto. rewrite app_length. eapply closed_qual_monotone; eauto. lia.
+  + constructor; auto. all : apply weaken_qstp_store; auto.
   + constructor; auto. 1,2 : rewrite app_length; eapply closed_ty_monotone; eauto; lia.
     apply weaken_qstp_store. auto.
   (* + specialize (IHHSTP1 Σ'). specialize (IHHSTP2 Σ'). eapply s_trans in IHHSTP2; eauto. *)
@@ -1592,8 +1587,7 @@ Lemma narrowing_stp_gen : forall{Γ1 b U du Γ2 Σ T1 d1 T2 d2}, stp (Γ1 ++ (b,
 Proof. intros Γ1 b U du Γ2 Σ T1 d1 T2 d2 HST Hb. remember (Γ1 ++ (b,U,du) :: Γ2) as Γ.
   generalize dependent Γ1; induction HST; intros; intuition.
   - subst. constructor. eapply narrowing_qstp_gen; eauto.
-  - subst. constructor. eapply narrowing_qstp_gen; eauto. auto. auto.
-    rewrite app_length in *. simpl in *. auto.
+  - subst. constructor. 1,4,5 : eapply narrowing_qstp_gen; eauto. auto. auto.
   - rewrite HeqΓ in *. constructor.
     subst. rewrite app_length in *. simpl in *. auto.
     subst. rewrite app_length in *. simpl in *. auto.
@@ -1803,7 +1797,7 @@ Fixpoint has_type_closed  {Γ φ Σ t T d} (ht : has_type Γ φ Σ t T d) :
 Proof.
   destruct ht; intuition; try apply has_type_closed in ht; try apply has_type_closed in ht1;
     try apply has_type_closed in ht2; intuition; eauto.
-  8,9 : try (apply closed_qual_qlub; auto); eauto.
+  9,10 : try (apply closed_qual_qlub; auto); eauto.
   - constructor. apply indexr_var_some' in H. auto.
   - apply indexr_var_some' in H. eapply closed_ty_monotone; eauto. lia.
   (* - apply stp_closed in H; intuition. *)
@@ -1816,7 +1810,9 @@ Proof.
   - inversion H12. subst. unfold openq.
     eapply closed_qual_open2; eauto.
   - constructor. apply indexr_var_some' in H0. auto.
-  - inversion H3. subst. eapply closed_ty_monotone; eauto; lia.
+  - econstructor. eapply closed_ty_monotone; eauto; lia.
+    eapply closed_qual_monotone; eauto; lia.
+  - inversion H3. subst. auto.
   - apply stp_closed in H. intuition.
 Qed.
 
@@ -1977,7 +1973,7 @@ Lemma weaken_gen : forall {t Γ1 Γ2 φ Σ T d},
     specialize (H2 (a0, b0, b)). destruct d1. repeat rewrite empty_union_left.
     replace (qset true t0 t1 t2) with ({♦} ⊔ (qset b1 t0 t1 t2)); try qdec.
     rewrite splice_qual_qlub_dist. rewrite splice_qual_fresh. apply t_ref; auto.
-    erewrite splice_ty_id; auto. eapply closed_ty_monotone; eauto. lia.
+    apply has_type_closed in H2. intuition.
     destruct φ. intuition. subst. simpl. intuition.
   - (* t_deref *) simpl. econstructor; eauto. rewrite <- not_fresh_splice_iff. auto. apply subqual_splice_lr'. auto.
   - (* t_assign *) simpl. specialize (IHHT1 Γ2 Γ1). specialize (IHHT2 Γ2 Γ1). intuition.
@@ -2028,6 +2024,7 @@ Lemma weaken_store : forall {Γ φ Σ t T d}, has_type Γ φ Σ t T d -> forall 
   - econstructor; eauto. eapply closed_qual_monotone; eauto; apply extends_length; auto.
     unfold extends in H6. destruct H6. rewrite H6.
     rewrite indexr_skips. auto. eapply indexr_var_some'. eauto.
+    eapply closed_ty_monotone; eauto.
     eapply closed_qual_monotone; eauto.
   - econstructor; eauto. eapply weaken_stp_store_ext; eauto.
     eapply weaken_store_senv_saturated; eauto.
@@ -2093,7 +2090,7 @@ Lemma narrowing_gen : forall {t Γ1 b U du Γ2 φ Σ T d},
     all: eapply narrowing_saturated; eauto.
   - econstructor; eauto.
     repeat rewrite app_length in *; simpl in *; auto.
-  - econstructor; eauto.
+  - econstructor; eauto. repeat rewrite app_length in *; simpl in *; auto.
   - econstructor; eauto.
   - econstructor; eauto.
   - eapply t_sub; eauto. eapply narrowing_stp_gen; eauto.
@@ -2297,7 +2294,6 @@ Lemma closed_ty_subst1 : forall {T b f l},
     try solve [eapply IHHc; eauto; lia ];
     try solve [eapply IHHc1; eauto];
     try solve [eapply IHHc2; eauto; lia].
-  erewrite subst1_ty_id; eauto.
   all : eapply closed_qual_subst1; eauto.
 Qed.
 
@@ -2685,7 +2681,14 @@ Lemma vtp_widening: forall {Σ T1 d1 T2 d2 t},
 Proof. intros. inversion H; subst.
   - inversion H0; subst. constructor; auto. apply qstp_closed in H4. intuition.
   - inversion H0; subst. eapply vtp_loc; eauto. apply qstp_closed in H13. intuition.
-    all : eapply s_trans; eauto.
+    apply qstp_closed in H18. intuition.
+    apply qstp_empty in H18. apply qstp_empty in H22.
+    replace q2 with q; auto. apply eq_if_eqqual; apply subqual_antisymm; auto.
+    1,2 : eapply s_trans; eauto.
+    apply qstp_empty in H18. apply qstp_empty in H22.
+    replace q2 with q; auto. eauto. apply eq_if_eqqual; apply subqual_antisymm; auto.
+    apply qstp_empty in H18. apply qstp_empty in H22.
+    replace q2 with q; auto. eauto. apply eq_if_eqqual; apply subqual_antisymm; auto.
   - inversion H0; subst. econstructor. 5: eapply H6. all : eauto.
     apply qstp_closed in H24. intuition.
     eapply s_trans; eauto.
@@ -2810,7 +2813,9 @@ Lemma subst_stp : forall{T1 T2},
   - simpl. constructor. eapply subst_qstp; eauto.
   - specialize (stp_closed HS1). intuition. specialize (stp_closed HS2). intuition.
     simpl. constructor. eapply subst_qstp; eauto.
-    all : repeat erewrite subst1_ty_id; eauto. eapply closed_qual_subst1'; eauto.
+    specialize (IHHS1 Tf df Γ0). intuition. erewrite subst1_qual_empty in H11. auto.
+    specialize (IHHS2 Tf df Γ0). intuition. erewrite subst1_qual_empty in H11. auto.
+    all : eapply subst_qstp; eauto.
   - simpl. constructor. inversion H. subst. 2 : inversion H0. subst.
     1,2: constructor; try eapply closed_ty_subst1'; eauto; eapply closed_qual_subst1'; eauto.
     eapply subst_qstp; eauto. eapply IHHS1; eauto.
@@ -2953,7 +2958,8 @@ Lemma substitution_gen :
     2 : erewrite <- @subst1_qual_id with (q:=q); eauto; eapply subst_qual_subqual_monotone; eauto.
     all : apply indexr_var_some' in H3; eapply just_loc_closed; eauto.
   - (* t_ref *) rewrite subst1_qlub_dist. rewrite subst1_qual_fresh. simpl. apply t_ref; auto.
-    erewrite subst1_ty_id; eauto. erewrite <- subst1_qual_fresh.
+    eapply closed_ty_subst1'; eauto.
+    erewrite <- subst1_qual_fresh.
     eapply subst_qual_subqual_monotone; eauto. apply subst1_non_fresh; eauto.
   - (* t_deref *) simpl. apply t_deref with (d := { 0 |-> dx' }ᵈ d); auto.
     apply subst1_non_fresh; eauto. apply subst_qual_subqual_monotone. auto.
@@ -3590,89 +3596,90 @@ Proof. intros Σ t T d H HwfSigma.
           eapply subqual_trans; eauto. 1,2 : eapply subqual_trans; eauto.
           1,2 : eapply weaken_store_saturated; eauto. eapply weaken_store_senv_saturated; eauto.
 
-    + (*tref*) subst. intuition. specialize (has_type_closed H) as HH. intuition. specialize (H8 T t). intuition.
-      * (*contraction*) right. intros.
-        exists (tloc (‖σ‖)). exists (t :: σ). intuition.
-        econstructor; eauto. apply (Preserve ((T,d1) :: Σ) (d1 ⊔ &!‖σ‖)); auto.
-        apply wf_senv_cons; auto. eapply has_type_senv_saturated; eauto.
-        eapply CtxOK_weaken_flt. apply CtxOK_ext; auto. apply H8. all: auto.
-        inversion H8. rewrite <- H13. eapply disj_loc; eauto. eapply has_type_senv_saturated; eauto.
-        inversion H8. rewrite qqplus_fresh; auto. rewrite qlub_assoc. rewrite <- @qlub_assoc with (q1:={♦}). rewrite qlub_idem.
-        apply t_sub with (T1:=TRef d1 T) (d1:=(d1 ⊔ &!‖σ‖)).
-        apply t_loc; auto. rewrite <- H13.
-        apply indexr_head. simpl. eapply closed_qual_monotone; eauto. simpl. intuition; try fnsetdec.
-        unfold dom. simpl. rewrite H13. fnsetdec.
-        apply has_type_filter in H. eapply subqual_trans; eauto.
-        apply stp_refl; auto. constructor; auto. simpl. eapply closed_qual_monotone; eauto.
-        constructor.  auto. repeat apply closed_qual_qlub; auto.
-        simpl. eapply closed_qual_monotone; eauto.
-        apply just_loc_closed. rewrite <- H13. auto.
-        rewrite <- qlub_assoc. eapply @disjointq_ldom' with (Σ:=Σ) (d:={♦} ⊔ d1); eauto. rewrite <- H13. eapply disj_loc; eauto.
-        eapply has_type_senv_saturated; eauto.
-        rewrite <- qlub_assoc. apply saturated_senv_qlub; auto.
-        eapply wf_senv_saturated_qplus. apply wf_senv_cons; eauto. eapply has_type_senv_saturated; eauto.
-        rewrite <- H13. rewrite indexr_head. eauto.
-      * (*congruence*) right. intros. specialize (H11 σ H8). destruct H11 as [t' [σ' HH10]].
-        exists (tref t'). exists σ'. intuition. econstructor; eauto.
-        destruct H13. apply (Preserve Σ' ∅); intuition. rewrite qqplus_qbot_right_neutral.
-        rewrite not_fresh_qqplus in H17; auto.
+  + (*tref*) subst. intuition. specialize (has_type_closed H) as HH. intuition. specialize (H8 T t). intuition.
+    * (*contraction*) right. intros.
+      exists (tloc (‖σ‖)). exists (t :: σ). intuition.
+      econstructor; eauto. apply (Preserve ((T,d1) :: Σ) (d1 ⊔ &!‖σ‖)); auto.
+      apply wf_senv_cons; auto. eapply has_type_senv_saturated; eauto.
+      eapply CtxOK_weaken_flt. apply CtxOK_ext; auto. apply H8. all: auto.
+      inversion H8. rewrite <- H13. eapply disj_loc; eauto. eapply has_type_senv_saturated; eauto.
+      inversion H8. rewrite qqplus_fresh; auto. rewrite qlub_assoc. rewrite <- @qlub_assoc with (q1:={♦}). rewrite qlub_idem.
+      apply t_sub with (T1:=TRef d1 T) (d1:=(d1 ⊔ &!‖σ‖)).
+      apply t_loc; auto. rewrite <- H13.
+      apply indexr_head. simpl. eapply closed_ty_monotone; eauto. simpl. eapply closed_qual_monotone; eauto.
+      simpl. intuition. unfold dom. simpl. rewrite H13. fnsetdec.
+      apply has_type_filter in H. eapply subqual_trans; eauto.
+      apply stp_refl; auto. constructor; auto. simpl. eapply closed_ty_monotone; eauto. eapply closed_qual_monotone; eauto.
+      constructor. auto. repeat apply closed_qual_qlub; auto.
+      simpl. eapply closed_qual_monotone; eauto.
+      apply just_loc_closed. rewrite <- H13. auto.
+      rewrite <- qlub_assoc. eapply @disjointq_ldom' with (Σ:=Σ) (d:={♦} ⊔ d1); eauto. rewrite <- H13. eapply disj_loc; eauto.
+      eapply has_type_senv_saturated; eauto.
+      rewrite <- qlub_assoc. apply saturated_senv_qlub; auto.
+      eapply wf_senv_saturated_qplus. apply wf_senv_cons; eauto. eapply has_type_senv_saturated; eauto.
+      rewrite <- H13. rewrite indexr_head. eauto.
+    * (*congruence*) right. intros. specialize (H11 σ H8). destruct H11 as [t' [σ' HH10]].
+      exists (tref t'). exists σ'. intuition. econstructor; eauto.
+      destruct H13. apply (Preserve Σ' ∅); intuition. rewrite qqplus_qbot_right_neutral.
+      rewrite not_fresh_qqplus in H17; auto.
+      eapply t_ref; eauto. inversion H4. subst. eapply closed_ty_monotone; eauto.
 
-    + (*tderef*) subst. intuition. specialize (has_type_closed H) as HH. intuition. specialize (H8 (TRef d1 T0) t). intuition.
-      * (* contraction *) right. intros. pose (HV := H). apply has_type_vtp in HV; intuition.
+  + (*tderef*) subst. intuition. specialize (has_type_closed H) as HH. intuition. specialize (H8 (TRef d1 T0) t). intuition.
+    * (* contraction *) right. intros. pose (HV := H). apply has_type_vtp in HV; intuition.
 
-        specialize (vtp_canonical_form_loc HV) as Hcan. intuition. destruct H13 as [l HH10]. subst.
+      specialize (vtp_canonical_form_loc HV) as Hcan. intuition. destruct H13 as [l HH10]. subst.
 
-        pose (HHV := HV). inversion HHV. subst.  pose (HH3 := H8). inversion HH3. subst.
-        pose (HH14 := H19). apply indexr_var_some' in HH14. rewrite H13 in HH14. apply indexr_var_some in HH14.
-        destruct HH14 as [v HHH14].  exists v. exists σ. intuition. apply step_deref; intuition.
-        apply (Preserve Σ ∅); intuition. rewrite qqplus_qbot_right_neutral.
-        specialize (H14 l v T d1). apply t_sub with (T1 := T)(d1:= d1); auto. intuition.
-        replace (d1) with (∅ ⊔ d1); auto. apply stp_scale_qlub; auto. eapply weaken_stp_store_ext; eauto.
+      pose (HHV := HV). inversion HHV. subst.  pose (HH3 := H8). inversion HH3. subst.
+      pose (HH14 := H19). apply indexr_var_some' in HH14. rewrite H13 in HH14. apply indexr_var_some in HH14.
+      destruct HH14 as [v HHH14].  exists v. exists σ. intuition. apply step_deref; intuition.
+      apply (Preserve Σ ∅); intuition. rewrite qqplus_qbot_right_neutral.
+      specialize (H14 l v T d1). apply t_sub with (T1 := T)(d1:= d1); auto. intuition.
+      replace (d1) with (∅ ⊔ d1); auto. apply stp_scale_qlub; auto.
 
-      * (*congruence *) right. intros. specialize (H11 σ H8).
-        destruct H11 as [t' [σ' HH8]]. exists (tderef t'). exists σ'. intuition. constructor; auto.
-        destruct H13. apply (Preserve Σ' ∅); intuition. rewrite qqplus_qbot_right_neutral. eapply t_deref; eauto.
-        eapply subqual_trans; eauto. eapply weaken_store_senv_saturated; eauto.
+    * (*congruence *) right. intros. specialize (H11 σ H8).
+      destruct H11 as [t' [σ' HH8]]. exists (tderef t'). exists σ'. intuition. constructor; auto.
+      destruct H13. apply (Preserve Σ' ∅); intuition. rewrite qqplus_qbot_right_neutral. eapply t_deref; eauto.
+      eapply subqual_trans; eauto. eapply weaken_store_senv_saturated; eauto.
 
-    + (*tassign*) subst. intuition. rename H into Ht1. rename H0 into Ht2. intuition.
-      apply has_type_closed in Ht1 as Ht1C. intuition.
-      apply has_type_closed in Ht2 as Ht2C. intuition.
-      specialize (H8 (TRef d1 T) t1). intuition.
-      specialize (H5 T t2). intuition.
-      * (* contraction *)
-        right. intros.
-        pose (Ht1' := Ht1). eapply has_type_vtp in Ht1'; eauto.
-        pose (Hloc := Ht1'). apply vtp_canonical_form_loc in Hloc; auto.
-        inversion Ht1'. destruct Hloc. subst.
-        pose (Ht2' := Ht2). apply has_type_vtp in Ht2'; auto.
-        exists tunit. exists (update σ x t2). inversion H25. subst.
-        inversion H5. subst. specialize (indexr_var_some' H20) as HH20. intuition.
-        econstructor; eauto. rewrite <- H15. auto. apply (Preserve Σ ∅); auto.
-        eapply CtxOK_update; eauto. rewrite <- H15. auto. apply t_sub with (T1:=T) (d1:=d1); auto.
-        replace (d1) with (∅ ⊔ d1); auto. apply stp_scale_qlub; auto.
-        eapply weaken_stp_store_ext; eauto. apply has_type_filter in Ht2; auto.
-        eapply has_type_senv_saturated; eauto.
-      * (* right congruence *)
-        right. intros. specialize (H8 σ H5). destruct H8 as [t' [σ' H4']].
-        exists (tassign t1 t'). exists σ'. intuition. econstructor; eauto.
-        pose (HV := Ht1). apply has_type_vtp in HV; intuition. inversion HV; subst.
-        destruct H15. apply (Preserve Σ' ∅); eauto. rewrite not_fresh_qqplus in H26; auto. simpl.
-        eapply t_assign; eauto. eapply weaken_flt. eapply weaken_store; eauto. auto. auto.
-      * (* left congruence *)
-        right. intros. specialize (H13 σ H8). destruct H13 as [t' [σ' H12']].
-        exists (tassign t' t2). exists σ'. intuition. econstructor; eauto.
-        destruct H15. apply (Preserve Σ' ∅); eauto. simpl.
-        eapply t_assign; eauto. eapply weaken_flt. eapply weaken_store; eauto.
-        all: auto.
+  + (*tassign*) subst. intuition. rename H into Ht1. rename H0 into Ht2. intuition.
+    apply has_type_closed in Ht1 as Ht1C. intuition.
+    apply has_type_closed in Ht2 as Ht2C. intuition.
+    specialize (H8 (TRef d1 T) t1). intuition.
+    specialize (H5 T t2). intuition.
+    * (* contraction *)
+      right. intros.
+      pose (Ht1' := Ht1). eapply has_type_vtp in Ht1'; eauto.
+      pose (Hloc := Ht1'). apply vtp_canonical_form_loc in Hloc; auto.
+      inversion Ht1'. destruct Hloc. subst.
+      pose (Ht2' := Ht2). apply has_type_vtp in Ht2'; auto.
+      exists tunit. exists (update σ x t2). inversion H25. subst.
+      inversion H5. subst. specialize (indexr_var_some' H20) as HH20. intuition.
+      econstructor; eauto. rewrite <- H15. auto. apply (Preserve Σ ∅); auto.
+      eapply CtxOK_update; eauto. rewrite <- H15. auto. apply t_sub with (T1:=T) (d1:=d1); auto.
+      replace (d1) with (∅ ⊔ d1); auto. apply stp_scale_qlub; auto.
+      apply has_type_filter in Ht2; auto.
+      eapply has_type_senv_saturated; eauto.
+    * (* right congruence *)
+      right. intros. specialize (H8 σ H5). destruct H8 as [t' [σ' H4']].
+      exists (tassign t1 t'). exists σ'. intuition. econstructor; eauto.
+      pose (HV := Ht1). apply has_type_vtp in HV; intuition. inversion HV; subst.
+      destruct H15. apply (Preserve Σ' ∅); eauto. rewrite not_fresh_qqplus in H26; auto. simpl.
+      eapply t_assign; eauto. eapply weaken_flt. eapply weaken_store; eauto. auto. auto.
+    * (* left congruence *)
+      right. intros. specialize (H13 σ H8). destruct H13 as [t' [σ' H12']].
+      exists (tassign t' t2). exists σ'. intuition. econstructor; eauto.
+      destruct H15. apply (Preserve Σ' ∅); eauto. simpl.
+      eapply t_assign; eauto. eapply weaken_flt. eapply weaken_store; eauto.
+      all: auto.
 
-    + (*t_sub*) subst. intuition. specialize (stp_closed H0) as H00. intuition.
-      specialize (H8 T1 t). intuition. right.
-      intros. specialize (H11 σ H8). destruct H11 as [t' [σ' HH8]]. exists t'. exists σ'. intuition.
-      destruct H13. apply (Preserve Σ' d'); intuition. eapply disjointq_scale; eauto. apply stp_qstp_inv in H0.
-      apply qstp_empty in H0. auto. eapply t_sub; eauto. apply stp_scale_qqplus.
-      eapply weaken_stp_store_ext; eauto. eapply disjointq_closed; eauto.
-      apply qqplus_bound. eapply subqual_trans; eauto. eapply disjointq_ldom; eauto.
-      apply senv_saturated_qqplus; eauto. eapply weaken_store_senv_saturated; eauto.
+  + (*t_sub*) subst. intuition. specialize (stp_closed H0) as H00. intuition.
+    specialize (H8 T1 t). intuition. right.
+    intros. specialize (H11 σ H8). destruct H11 as [t' [σ' HH8]]. exists t'. exists σ'. intuition.
+    destruct H13. apply (Preserve Σ' d'); intuition. eapply disjointq_scale; eauto. apply stp_qstp_inv in H0.
+    apply qstp_empty in H0. auto. eapply t_sub; eauto. apply stp_scale_qqplus.
+    eapply weaken_stp_store_ext; eauto. eapply disjointq_closed; eauto.
+    apply qqplus_bound. eapply subqual_trans; eauto. eapply disjointq_ldom; eauto.
+    apply senv_saturated_qqplus; eauto. eapply weaken_store_senv_saturated; eauto.
 Qed.
 
 (* To show preservation_of_separation, we derive progress & preservation from type safety: *)

@@ -2,21 +2,18 @@
 
 Reachability types are a new take on modeling lifetimes and sharing in high-level functional languages, showing how to integrate Rust-style reasoning capabilities with higher-order functions, polymorphic types, and similar high-level abstractions.
 
-## Mechanizations
+## Mechanization Overview
 
-### Overview
+* [`base`](./base/) -- Coq mechanization of the $λ^*$-calculus [1] and its variations, gradually increasing in complexity.
 
-* [`base`](https://github.com/TiarkRompf/reachability/tree/main/base) -- Coq mechanization of the $λ^*$-calculus [1] and its variations, gradually increasing in complexity.
+* [`effects`](./effects/) -- Coq mechanization of the $λ_\varepsilon^*$-calculus [1] and its variations, gradually increasing in complexity.
 
-* [`effects`](https://github.com/TiarkRompf/reachability/tree/main/effects) -- Coq mechanization of the $λ_\varepsilon^*$-calculus [1] and its variations, gradually increasing in complexity.
+* [`polymorphism`](./polymorphism/) -- Coq mechanization of the $λ^\diamond$-calculus [2] and its variations, featuring a refined reachability model that scales to parametric type polymorphism.
 
-* [`polymorphism`](https://github.com/TiarkRompf/reachability/tree/main/polymorphism) -- Coq mechanization of the $λ^\diamond$-calculus [2] and its variations, featuring a refined reachability model that scales to parametric type polymorphism.
+* [`log-rel-unary`](./log-rel-unary/) -- Unary logical relations for proving semantic type soundness and termination of $λ^\diamond$, $λ_\varepsilon^\diamond$, and its variants [4].
 
-* [`lr`](https://github.com/TiarkRompf/reachability/tree/main/lr) -- Logical relations for proving semantic type soundness of the $λ^*$-calculus [1,3].
+* [`log-rel-binary`](./log-rel-binary/) -- Binary logical relations for establishing equational reasoning about $λ^\diamond$, $λ_\varepsilon^\diamond$, and its variants [4].
 
-### Acknowledgements
-
-The mechanizations based on sets reuse some libraries by the [UPenn PL Club](https://www.cis.upenn.edu/~plclub/popl08-tutorial/code/index.html) that complement the FSet library shipping with [Coq](https://coq.inria.fr/distrib/current/stdlib/Coq.FSets.FSetInterface.html). We set up the FSet library with extensional equality as inspired by [Boruch-Gruszecki et al.](https://arxiv.org/abs/2105.11896)'s artifact.
 
 ## Prototype Implementations
 
@@ -28,9 +25,10 @@ polymorphic reachability types [2].
 
 ## Contributors
 
-* [Oliver Bračevac](https://bracevac.org) (Mechanization lead)
-* [Guannan Wei](https://continuation.passing.style)
-* [Yuyan Bao](https://github.com/YuyanBao)
+* [Oliver Bračevac](https://bracevac.org) (Initial mechanization lead 2021-2022)
+* [Guannan Wei](https://continuation.passing.style) (Polymorphism lead 2023-2024)
+* [Yuyan Bao](https://yuyanbao.github.io) (Logical relations lead 2023-2024)
+* [Songlin Jia](https://songlinj.github.io)
 * [Siyuan He](https://sweetsinpackets.github.io)
 * [David Deng](https://github.com/PROgram52bc)
 * [Tiark Rompf](https://tiarkrompf.github.io)
@@ -38,13 +36,18 @@ polymorphic reachability types [2].
 ## References
 
 [1] **Reachability Types: Tracking Aliasing and Separation in Higher-order Functional Programs** (OOPSLA 2021)</br>
-by Yuyan Bao, Guannan Wei, Oliver Bračevac, Luke Jiang, Qiyang He, and Tiark Rompf
-([pdf](https://dl.acm.org/doi/10.1145/3485516)).
+Yuyan Bao, Guannan Wei, Oliver Bračevac, Luke Jiang, Qiyang He, Tiark Rompf
+([pdf](https://www.cs.purdue.edu/homes/rompf/papers/bao-oopsla21.pdf)).
 
-[2] **Polymorphic Reachability Types: Tracking Aliasing and Separation in Higher-order Generic Programs** (2023)</br>
-by Guannan Wei, Oliver Bračevac, Siyuan He, Yuyan Bao, and Tiark Rompf
-(to appear).
+[2] **Polymorphic Reachability Types: Tracking Aliasing and Separation in Higher-order Generic Programs** (POPL 2024)</br>
+Guannan Wei, Oliver Bračevac, Siyuan He, Yuyan Bao, Tiark Rompf
+([pdf](https://www.cs.purdue.edu/homes/rompf/papers/wei-popl24.pdf)).
 
-[3] **Graph IRs for Impure Higher-Order Languages -- Making Aggressive Optimizations Affordable with Precise Effect Dependencies** (OOPSLA 2023)</br>
-by Oliver Bračevac, Guannan Wei, Luke Jiang, Supun Abeysinghe, Songlin Jia, Siyuan He, Yuyan Bao, and Tiark Rompf
-(to appear).
+[3] **Graph IRs for Impure Higher-Order Languages: Making Aggressive Optimizations Affordable with Precise Effect Dependencies** (OOPSLA 2023)</br>
+Oliver Bračevac, Guannan Wei, Luke Jiang, Supun Abeysinghe, Songlin Jia, Siyuan He, Yuyan Bao, Tiark Rompf
+([pdf](https://www.cs.purdue.edu/homes/rompf/papers/bracevac-oopsla23.pdf)).
+
+[4] **Modeling Reachability Types with Logical Relations: Semantic Type Soundness, Termination, and Equational Theory** (arXiv 2023)</br>
+Yuyan Bao, Guannan Wei, Oliver Bračevac, Tiark Rompf
+([pdf](https://arxiv.org/pdf/2309.05885.pdf)).
+

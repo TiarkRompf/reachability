@@ -11,8 +11,9 @@ The $λ^*_\varepsilon$-calculus [1] and variants, combining reachability with fl
 graph TD
     subgraph poly[Effects]
       Base
-	  Kill
+	    Kill
     end
+    Base-->Kill
 ```
 
 ## References

@@ -18,6 +18,6 @@ graph TD
 
 ## References
 
-[1] **Polymorphic Reachability Types: Tracking Aliasing and Separation in Higher-order Generic Programs** (2023)</br>
-by Guannan Wei, Oliver Bračevac, Siyuan He, Yuyan Bao, and Tiark Rompf
-(to appear).
+[1] **Polymorphic Reachability Types: Tracking Aliasing and Separation in Higher-order Generic Programs** (POPL 2024)</br>
+Guannan Wei, Oliver Bračevac, Siyuan He, Yuyan Bao, and Tiark Rompf
+([pdf](https://www.cs.purdue.edu/homes/rompf/papers/wei-popl24.pdf)).

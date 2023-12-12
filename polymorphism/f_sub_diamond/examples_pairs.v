@@ -126,12 +126,12 @@ Section PairTransparent.
   Example TPair A2 a0 a2 B4 b0 b2 b4 := ∀<:{ a0 ⊔ b0 ⊔ {♦} }.{ {{A2 | a2} ==> {{B4 | b4} ==> { #5 | #!5 } | #!1} | ∅ } ==> {#3 | #!3} | #!1 ⊔ a2 ⊔ b2 }.
 
   (* The transparent pair introduction's type:
-     pair_mk: (∀A^a<:⊤^♦. (∀B^b<:⊤^a,♦. ( (x : A^a) -> ((y : B^b) -> (Pair[A^x,B^y])^x,y)^x))^a,b)^∅
+     pair_mk: (∀A^a<:⊤^♦. (∀B^b<:⊤^a,♦. ( (x : A^a) -> ((y : B^b) -> (Pair[A^x,B^y])^x,y)^x))^∅)^∅
      Again, overlap is important here. We generally want to allow overlapping pair components, which is why the bound for b mentions a.
      If we didn't include this, then we could construct strictly disjoint pairs.
    *)
   Example t_pair1_ :
-    has_type [] ∅ [] pair_mk (∀.{ ∀<:{ #♦1 }.{ {#3 | #!3} ==> {{#3 | #!3 } ==> (*A: #7, B: #5, x:#3, y:#1*) {TPair #9 #!3 #!5 #9 #!1 #!3 #!5 | (#!3 ⊔ #!1) } | #!1 }  | #!1 ⊔ #!3 } | #!1 }) ∅.
+    has_type [] ∅ [] pair_mk (∀.{ ∀<:{ #♦1 }.{ {#3 | #!3} ==> {{#3 | #!3 } ==> (*A: #7, B: #5, x:#3, y:#1*) {TPair #9 #!3 #!5 #9 #!1 #!3 #!5 | (#!3 ⊔ #!1) } | #!1 } | ∅} | ∅ }) ∅.
     unfold pair_mk.
     apply t_tabs; ccrush. unfold TPair. ccrush. (* 0/1*)
     apply t_tabs; ccrush. (* 2/3 *)
@@ -153,7 +153,7 @@ Section PairTransparent.
 
   (* generalize to all contexts *)
   Example t_pair1 :
-    has_type Γ φ Σ pair_mk (∀.{ ∀<:{ #♦1 }.{ {#3 | #!3} ==> {{#3 | #!3 } ==> (*A: #7, B: #5, x:#3, y:#1*) {TPair #9 #!3 #!5 #9 #!1 #!3 #!5 | (#!3 ⊔ #!1) } | #!1 }  | #!1 ⊔ #!3 } | #!1 }) ∅.
+    has_type Γ φ Σ pair_mk (∀.{ ∀<:{ #♦1 }.{ {#3 | #!3} ==> {{#3 | #!3 } ==> (*A: #7, B: #5, x:#3, y:#1*) {TPair #9 #!3 #!5 #9 #!1 #!3 #!5 | (#!3 ⊔ #!1) } | #!1 }  | ∅ } | ∅ }) ∅.
     eapply weaken'. eapply weaken_store. apply t_pair1_. all : auto.
   Qed.
 
@@ -370,9 +370,9 @@ Section PairTransparentUse.
     * qual_destruct. inversion cl_a. inversion cl_b. subst. apply bound_0_empty in H7, H17. simpl in nf_a, nf_b. subst. ccrush.
   Qed.
 
-  Example inst_pair1 : has_type Γ φ Σ (ttapp (ttapp pair_mk)) ({A | a} ==> {{B | b} ==> {TPair A #!3 #!5 B #!1 #!3 #!5 | #!1 ⊔ #!3 } | #!1 }) (a ⊔ b).
+  Example inst_pair1 : has_type Γ φ Σ (ttapp (ttapp pair_mk)) ({A | a} ==> {{B | b} ==> {TPair A #!3 #!5 B #!1 #!3 #!5 | #!1 ⊔ #!3 } | #!1 }) (∅).
     unfold TPair.
-    change_qual (openq a b (a ⊔ #!1)).
+    change_qual (openq ∅ b ∅).
     change_type (open_ty TUnit ∅ B b
     ({A | a}
           ==> {{#3 | #!3}
@@ -381,7 +381,7 @@ Section PairTransparentUse.
                           | #! 1 ⊔ #! 5 ⊔ #! 3}
                       | #! 1 ⊔ #! 3}
               | #! 1})).
-    apply t_tapp_fresh with (d1':=b ⊔ {♦}) (df':=a ⊔ {♦}); try solve [ccrush].
+    eapply t_tapp_fresh with (d1':=b ⊔ {♦}) (df':={♦}); try solve [ccrush].
     (* change the bound *)
     eapply t_sub with (T1:=(∀<:{⊤ | a ⊔ {♦}}.{
       {A | a}
@@ -392,8 +392,8 @@ Section PairTransparentUse.
                          | #! 1 ⊔ #! 5 ⊔ #! 3}
                      | #! 1 ⊔ #! 3}
              | #! 1}
-      | a ⊔ #! 1}) ) (d1:=a); auto.
-    * change_qual (openq ∅ a #!1).
+      | ∅ }) ) (d1:=∅); auto.
+    * change_qual (openq ∅ a ∅).
       change_type (open_ty TUnit (∅) A a (∀<:{⊤ | #!1 ⊔ {♦}}.{
         {#3 | #!3}
            ==> {{# 3 | #! 3}
@@ -403,7 +403,7 @@ Section PairTransparentUse.
                            | #! 1 ⊔ #! 5 ⊔ #! 3}
                        | #! 1 ⊔ #! 3}
                | #! 1}
-        | #!3 ⊔ #! 1})).
+        | ∅ })).
       eapply t_tapp_fresh with (d1':=a ⊔ {♦}) (df':=∅); try solve [ccrush]. dom_equals ({♦}).
       (* change the bound *)
       eapply t_sub with (T1:=(∀<:{⊤ | {♦}}.{
@@ -416,18 +416,16 @@ Section PairTransparentUse.
                               | #! 1 ⊔ #! 5 ⊔ #! 3}
                           | #! 3 ⊔ #! 1}
                   | #! 1}
-           | #! 1 ⊔ #! 3}
-        | #!1})) (d1:=∅); auto.
+           | ∅ }
+        | ∅})) (d1:=∅); auto.
       apply t_pair1. auto.
       apply s_all. ccrush. ccrush. ccrush. ccrush. cleanup; try lia. apply s_all. ccrush. ccrush. apply qs_sq; ccrush.
       apply stp_refl; ccrush. apply qs_sq; ccrush. replace (union (singleton 1) (singleton 3)) with (union (singleton 3) (singleton 1)).
-      apply stp_refl; ccrush. apply qs_sq; ccrush. fnsetdec.
+      apply stp_refl; ccrush. fnsetdec.
       qual_destruct. ccrush. intros. rewrite H in nf_a. discriminate. eauto.
-      opening. ccrush. qual_destruct. cleanup. f_equal. qdec. qdec.
-    * apply s_all. 1-4: ccrush. apply stp_refl; ccrush. apply qs_sq; ccrush.
-    * eauto.
+      opening. ccrush. qual_destruct. cleanup. f_equal. qdec.
+    * apply s_all. 1-4: ccrush. qual_destruct. ccrush. apply stp_refl; ccrush.
     * intros. rewrite H in nf_b. discriminate.
-    * opening. eauto.
     * eauto.
     * cleanup. qual_destruct. repeat f_equal; fnsetdec. all : lia.
   Qed.
@@ -448,7 +446,7 @@ Section PairTransparentUse.
       change_type (open_ty TUnit ∅ B b (∀<:{⊤ | a ⊔ #!1 ⊔ {♦}}.{
         {{A | a} ==> {{B | #!5} ==> {# 5 | #! 5} | #! 1} | ∅} ==> {# 3 | #! 3} | #! 1 ⊔ a ⊔ #!3})).
       apply t_app; try solve [ccrush].
-      change_qual (openq (a ⊔ b) a #!1). replace (a ⊔ #! 1) with (#!1 ⊔ a).
+      change_qual (openq ∅ a #!1). replace (a ⊔ #! 1) with (#!1 ⊔ a).
       change_type (open_ty TUnit ∅ A a (
         {B | b}
           ==> {∀<:{⊤ | #!3 ⊔ #! 1 ⊔ {♦}}.{
@@ -612,7 +610,7 @@ Section PairOpaque.
 
       which accepts the two (contextually fresh) components. Note that we permit potential overlap at
       y with x. The result is C and may reach both x and y. Essentially, this encoding, due to ignoring
-      the qualifier binder c, behaves like the "imprecise" pairs in Section 2.3 of the paper.
+      the qualifier binder c, behaves like the "imprecise" pairs in Section 2.4.2 of the paper.
       Is this an issue? Not at all in the case of out-of-scope data, because all we know is that the
       data will reach the name of the pair anyway.
       Using the same "self-reference chain" trick introduced in examples_cell_opaque.v, we demonstrate

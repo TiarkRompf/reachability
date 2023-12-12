@@ -50,7 +50,7 @@ Section QPoly.
     dep_app (∅) ({♦}) #!1.
     eapply t_app_fresh with (d1':={♦}) (df':=∅); eauto; ccrush.
     apply idfun_ty; auto.
-    change_qual ({♦} ⊔ ∅). apply t_ref; auto.
+    change_qual ({♦} ⊔ ∅).
   Qed.
 
   Section FakeId.
@@ -636,7 +636,6 @@ Section QPoly.
       unfold escaping_closure. dep_app (∅) ({♦} ⊔ ∅) #!1.
       eapply t_app_fresh with (T1:=TRef ∅ TUnit) (d1':={♦}) (df':=∅); crush.
       * cleanup. apply esc_ty_let.
-      * eapply t_ref; ccrush.
       * ccrush.
       * ccrush.
     Qed.

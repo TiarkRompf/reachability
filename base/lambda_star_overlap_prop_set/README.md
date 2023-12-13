@@ -2,14 +2,33 @@
 
 ## Propositional Set
 
-A unique aspect of the propositional set is that it uses Coq's native data structure (`bool` and `Prop`) to implement the set data structure, with no external library dependencies.
+A unique aspect of the propositional set is that it uses an indicator function
+to implement the set data structure. Since Coq has native support for higher
+order functions, the set is implemented completely using Coq's native data
+structure, with no external library dependencies.
 
-The boolean version of a set is a function of type `nat -> bool`, where the returning boolean indicates whether the provided natural number is in the set.
-The propositional version is a a function of type `nat -> Prop`, where the returning proposition is valid only if the natural number is in the set.
+We provide two variants of indicator functions, differentiated by The codomain
+of the indicator function.
 
-The boolean version can be useful when we need to perform operations based on membership criteria (e.g. using `if` conditions); on the other hand, the propositional version is useful for theorem proving, where one can easily write auxiliary tactics leveraging Coq's native propositional reasoning to facilitate powerful automation.
+When the indicator function's codomain is `bool`, the function has a type of
+`nat -> bool`, where the returning boolean indicates whether the provided
+natural number is in the set.  The boolean version has the advantage decidable
+membership, where one can deterministically decide and analyze set membership
+(e.g. using `if` conditions).
 
-We provide reflection lemmas to convert between both the boolean and the propositional version, effectively showing the equality between them.
+Another variant of the indicator function has the codomain of `Prop`, where a
+valid returning proposition serves as a proof that the natural number is in the
+set.  The advantage of the propositional version is that one can leverage Coq's
+native propositional reasoning (e.g. `intuition`, `eauto`, etc. ) to facilitate
+powerful proof automation. However, an intrinsic limitation of the `Prop` is
+that set membership cannot be decided deterministically. Due to its underlying
+intuitionistic logic, where no law of excluded middle exists as an axiom,
+instead of performing a binary case analysis using branching, one has to
+provide explicit proofs in order to talk about membership and non-membership.
+
+We provide reflection lemmas between both the boolean and the propositional
+version, serving as a bridge to convert between the two versions when
+necessary.
 
 ## Variant
 

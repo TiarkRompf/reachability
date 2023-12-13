@@ -45,7 +45,7 @@ graph TD
     Self-->Full
 ```
 
-> Note: We have been experimenting with a propositional set implementation on some versions for more powerful automation.  The * versions in the diagram above indicate versions with propositional set implementation.
+> Note: We are shifting to a propositional set implementation on some versions for more powerful automation.  The * versions in the diagram above indicate versions with propositional set implementation.
 
 ## Acknowledgements
 

@@ -1193,17 +1193,6 @@ Lemma open_subst1_qual_comm : forall {q : qual} {k g df ff lf},
   - ndestruct (bvs0 k); ndestruct (fvs0 0); apply Q_lift_eq; unfold_Q; nlift; unfold_N; repeat f_equal; apply functional_extensionality; intros; apply propositional_extensionality; intuition. all: exfalso; eauto.
 Qed.
 
-Lemma open_subst1_qual_comm2 : forall {q : qual} {k g df ff lf},
-    closed_Qual 0 ff lf (Q_lift df) ->
-    [[k ~> just_fv g ]]ᵈ ({0 |-> df }ᵈ q) = {0 |-> df }ᵈ ([[ k ~> just_fv (S g) ]]ᵈ q).
- intros. apply Q_lift_eq. repeat rewrite Q_lift_subst_qual,Q_lift_open_qual. unfold_Q. nlift. unfold_N.
-repeat f_equal; apply functional_extensionality; intros; apply propositional_extensionality.
-- split. intros. split. intros.
-  (* intuition *)
-  (* runs forever *)
-  (* TODO: better way? <2023-06-01, David Deng> *)
-Admitted.
-
 Fixpoint open_subst1_ty_comm {T : ty} :
   forall {k g df ff lf}, closed_qual 0 ff lf df ->
     [[k ~> just_fv g ]]ᵀ ({0 |-> df }ᵀ T) = {0 |-> df }ᵀ ([[ k ~> just_fv (S g) ]]ᵀ  T).

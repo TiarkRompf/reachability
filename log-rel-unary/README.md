@@ -81,5 +81,5 @@ Oliver Bračevac, Guannan Wei, Luke Jiang, Supun Abeysinghe, Songlin Jia, Siyuan
 Yuyan Bao, Guannan Wei, Oliver Bračevac, Tiark Rompf
 ([pdf](https://arxiv.org/pdf/2309.05885.pdf)).
 
-[5] **Escape with Your Self: Expressive Reachability Types with Sound and Decidable Bidirectional Type Checking**></br>
+[5] **Escape with Your Self: Expressive Reachability Types with Sound and Decidable Bidirectional Type Checking** </br>
 Songlin Jia, Guannan Wei, Siyuan He, Yueyang Tang, Yuyan Bao, Tiark Rompf.

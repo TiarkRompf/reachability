@@ -57,6 +57,8 @@ Require Import tactics.
 Require Import env.
 Require Import qualifiers.
 
+Ltac Tauto.intuition_solver ::= auto with *.
+
 Module STLC.
 
 (* ---------- qualifier sets ---------- *)
@@ -132,6 +134,7 @@ Inductive tm : Type :=
   | tput : tm -> tm -> tm
   | tapp : tm -> tm -> tm (* f(x) *)
   | tabs : tm -> tm (* \f x.t *)
+  | tas  : tm -> ty -> bool -> ql -> tm (* t: T *)
 .
 
 
@@ -221,14 +224,17 @@ Inductive stp : tenv -> ql -> bool -> ty -> bool -> ql -> ty -> bool -> ql -> Pr
     qstp G p q1 q2 ->
     bsub fr1 fr2 ->
     stp G p grf TBool fr1 q1 TBool fr2 q2
-| s_ref: forall G p grf T1 q1 q2 fr1 fr2,
+| s_ref: forall G p grf T1 T2 q1 q2 fr1 fr2,
     qstp G p q1 q2 ->
     bsub fr1 fr2 ->
     closed_ty (length G) T1 ->
-    stp G p grf (TRef T1) fr1 q1 (TRef T1) fr2 q2 (* todo: T1 <: T2, T2 <: T1 *)
-| s_fun: forall G p T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a qffr_a qfa
-            gr2 grf T1b q1fn_b q1fr_b q1b T2b q2fn_b q2ar_b q2fr_b q2b qffr_b qfb,
-    stp G p false
+    closed_ty (length G) T2 ->
+    stp G p false T1 false qempty T2 false qempty ->
+    stp G p false T2 false qempty T1 false qempty ->
+    stp G p grf (TRef T1) fr1 q1 (TRef T2) fr2 q2 (* todo: T1 <: T2, T2 <: T1 *)
+| s_fun: forall G p gr1 T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a qffr_a qfa
+                grf gr2 T1b q1fn_b q1fr_b q1b T2b q2fn_b q2ar_b q2fr_b q2b qffr_b qfb,
+    stp G p gr1
       T1b
       (q1fn_b || q1fr_b)
       q1b
@@ -247,75 +253,70 @@ Inductive stp : tenv -> ql -> bool -> ty -> bool -> ql -> ty -> bool -> ql -> Pr
     bsub q2fr_a q2fr_b ->
     bsub qffr_a qffr_b ->
     qstp G p qfa qfb ->
+    (gr1 = true -> q2ar_a = true -> qstp G p q1a q2b) ->
     stp G p grf (* grf: whether it allows to grow locations *)
       (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa
       (TFun T1b q1fn_b q1fr_b q1b T2b q2fn_b q2ar_b q2fr_b q2b) qffr_b qfb
-| s_fun_fresh_arg_to_self_res: forall G p T1a T1b T2 fr1 fr2 q1 q2 q1b q1a q1fn_a q2fn_a q2ar_a q2ar_b,
-    closed_ty (length G) T2 ->
-    closed_ql (length G) q1 ->
-    closed_ql (length G) q2 ->
-    psub (plift q1b) (pdom G) ->
-    psub (plift q1a) (plift p) ->
-    psub (plift q1) (plift q2) -> (* use qstp? *)
-    (q2ar_a = true -> psub (plift q1a) (plift q2)) -> (* only needed when switching x -> f *)
-    stp G p true T1b false q1b T1a false (*fr2*) q1a ->                  (*  A2^u  -> A1^a  *)
-    (* GW: q1a is not used in the conclusion? *)
-    (* GW: what is grf? *)
-    (q1fn_a = true \/ fr1 = false /\ q1 = qempty) ->
-    bsub fr1 fr2 ->
-    stp G p q2ar_a
-      (TFun T1a q1fn_a true qempty T2 q2fn_a q2ar_a false qempty) fr1 q1  (*  A1^f* -> B^x  q1    *)
-      (TFun T1b false  false q1b   T2 true   q2ar_b false qempty) fr2 q2  (*  A2^u  -> B^f  q1,a  *)
-| s_fun_q2_to_fn2: forall G p T1 T2 q1fr q2fn_a q1 q2 fr1 qfa qfb,
-    closed_ty (length G) T1 ->
-    closed_ty (length G) T2 ->
-    closed_ql (length G) qfa ->
-    closed_ql (length G) qfb ->
-    closed_ql (length G) q1 ->
-    psub (plift qfb) (plift p) ->
-    psub (plift qfa) (plift qfb) ->
-    psub (plift q2)  (plift qfb) ->
-    stp G p true
-      (TFun T1 false q1fr q1 T2 q2fn_a false false q2)     fr1 qfa  (*   A^u -> B^af      *)
-      (TFun T1 false q1fr q1 T2 true false false qempty) fr1 qfb  (* ( A^u -> B^f )^a  *)
-| s_fun_non_drop_grow: forall G p T1a q1fn_a q1fr_a q1a T2a q2a qffr_a qfa
-                              gr2 T1b q1fn_b q1fr_b q1b T2b q2b qffr_b qfb,
-    stp G p true
-      T1b (q1fn_b || q1fr_b) q1b
-      T1a (q1fn_a || q1fr_a) q1a ->
-    stp G p gr2
-      T2a true q2a
-      T2b true q2b ->
-    bsub q1fn_b q1fn_a ->
-    bsub q1fr_b q1fr_a ->
-    bsub qffr_a qffr_b ->
-    qstp G p qfa qfb ->
-    qstp G p q1a qfb ->
+| s_fun_fn1fr1: forall G p grf T1a q1fn_a        q1a T2a q2fn_a q2ar_a q2fr_a q2a qffr_a qfa
+                                   q1fn_b q1fr_b q1b                              qffr_b qfb,
+    closed_ty (length G) T1a ->
+    closed_ty (length G) T2a ->
     closed_ql (length G) q1a ->
     closed_ql (length G) q1b ->
     closed_ql (length G) q2a ->
-    closed_ql (length G) q2b ->
-    q1fn_b = true -> q1fn_a = true /\ q1fr_a = true ->
-    stp G p true (* grf: whether it allows to grow locations *)
-      (TFun T1a q1fn_a q1fr_a q1a T2a false true false q2a) qffr_a qfa
-      (TFun T1b q1fn_b q1fr_b q1b T2b true  true false q2b) qffr_b qfb
-| s_fun_expand_arg: forall G p T1 T2 fr1 q1 q1b q1fn_a q2fn_a grf,
-    closed_ty (length G) T1 ->
-    closed_ty (length G) T2 ->
-    closed_ql (length G) q1b ->
-    closed_ql (length G) q1 ->
-    (q1fn_a = true \/ fr1 = false /\ q1 = qempty) ->
+    q1fn_a = true \/ qffr_a = false /\ qfa = qempty ->
+    bsub qffr_a qffr_b ->
+    qstp G p qfa qfb ->
     stp G p grf
-      (TFun T1 q1fn_a true qempty T2 q2fn_a true false qempty) fr1 q1  (*  A^*f   -> B^x  *)
-      (TFun T1 q1fn_a true q1b    T2 q2fn_a true false qempty) fr1 q1  (*  A^*f,a -> B^x  *)
-| s_refl: forall G p grf T1 q1 fr1, (* not strictly needed, s_boo/ref/fun all support refl *)
-    closed_ty (length G) T1 ->
-    closed_ql (length G) q1 ->
-    stp G p grf T1 fr1 q1 T1 fr1 q1
+      (TFun T1a q1fn_a true   q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa
+      (TFun T1a q1fn_b q1fr_b q1b T2a q2fn_a q2ar_a q2fr_a q2a) qffr_b qfb
+| s_fun_ar2: forall G p grf T1a q1fn_a q1a T2a q2fn_a q2fr_a q2a qffr_a qfa
+                                               q2fn_b q2fr_b q2b qffr_b qfb,
+    closed_ty (length G) T1a ->
+    closed_ty (length G) T2a ->
+    bsub (q1fn_a || q2fn_a) q2fn_b ->
+    bsub q2fr_a q2fr_b ->
+    qstp G p (qor q1a q2a) q2b ->
+    bsub qffr_a qffr_b ->
+    qstp G p qfa qfb ->
+    stp G p grf
+      (TFun T1a q1fn_a false q1a T2a q2fn_a true  q2fr_a q2a) qffr_a qfa
+      (TFun T1a q1fn_a false q1a T2a q2fn_b false q2fr_b q2b) qffr_b qfb
+| s_fun_fn2: forall G p T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a qffr_a qfa
+                                                         q2ar_b q2fr_b q2b qffr_b qfb,
+    closed_ty (length G) T1a ->
+    closed_ty (length G) T2a ->
+    closed_ql (length G) q1a ->
+    True ->
+    bsub q1fn_a q1fr_a ->
+    bsub q2ar_a q2ar_b ->
+    bsub q2fr_a q2fr_b ->
+    qstp G p q2a (qor q2b qfb) ->
+    bsub qffr_a qffr_b ->
+    qstp G p qfa qfb ->
+    stp G p true
+      (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa
+      (TFun T1a q1fn_a q1fr_a q1a T2a true   q2ar_b q2fr_b q2b) qffr_b qfb
 | s_trans: forall G p grf T1 T2 T3 q1 q2 q3 fr1 fr2 fr3,
     stp G p grf T1 fr1 q1 T2 fr2 q2 ->
     stp G p grf T2 fr2 q2 T3 fr3 q3 ->
     stp G p grf T1 fr1 q1 T3 fr3 q3.
+
+Lemma s_refl: forall G p grf T1 q1 fr1, (* not strictly needed, s_boo/ref/fun all support refl *)
+  closed_ty (length G) T1 ->
+  closed_ql (length G) q1 ->
+  stp G p grf T1 fr1 q1 T1 fr1 q1.
+Proof.
+  intros. revert grf fr1 H0. revert q1. induction T1; intros.
+  - constructor. constructor; auto. intros ? ?; auto. intro; auto.
+  - inversion H; subst. intuition. assert (closed_ql (length G) qempty).
+    intros ? ?. inversion H2. constructor; auto. constructor; auto.
+    intros ? ?; auto. intro; auto.
+  - inversion H; subst. econstructor; auto. 1-6: intro; auto.
+    constructor; auto. intros ? ?; auto. instantiate (1 := false). intuition.
+Unshelve.
+  apply true.
+Qed.
 
 Inductive has_type : tenv -> tm -> ty -> ql -> bool -> ql -> Prop :=
 | t_true: forall env p,
@@ -344,17 +345,18 @@ Inductive has_type : tenv -> tm -> ty -> ql -> bool -> ql -> Prop :=
        if fr1 then
          True
        else
-         (frx = false /\ (exists x0, f = tvar x0 /\ psub (plift qx) (pone x0)) \/
-            frx = false /\ psub (plift qx) (plift q1))
+         (frx = false /\ (exists x0, f = tvar x0 /\ qstp env p qx (qor (qone x0) q1)) \/
+            frx = false /\ qstp env p qx q1)
      else
        if fr1 then
+         (* done: also support qx < q1! *)
+         exists qx', qstp env p qx qx' /\
          psub (pand
-                 (vars_trans' env qf)
-                 (vars_trans' env qx))
-           (plift q1)
-           (* TODO: also support qx < q1! *)
+                 (vars_trans' env (qdiff qx' q1))
+                 (vars_trans' env qf))
+           pempty
        else
-         frx = false /\ psub (plift qx) (plift q1)) ->
+         frx = false /\ qstp env p qx q1) ->
     (* ---- *)
     psub (plift q2) (plift p) ->   (* this is necessary (so far!) *)
     has_type env (tapp f t) T2 p
@@ -371,10 +373,11 @@ Inductive has_type : tenv -> tm -> ty -> ql -> bool -> ql -> Prop :=
     closed_ql (length env) q1 ->
     closed_ql (length env) q2 ->
     closed_ql (length env) qf ->
+    psub (plift qf) (plift p) ->
     has_type env (tabs t)
       (TFun T1 fn1 fr1 q1 T2 fn2 ar2 fr2 q2)
       p false qf
-| t_sub: forall env y T p fr1 q1 fr2 q2, (* not necessary? *)
+(* | t_sub: forall env y T p fr1 q1 fr2 q2, (* not necessary? *)
     has_type env y T p fr1 q1 ->
     psub (plift q1) (plift q2) ->
     psub (plift q2) (pdom env)  ->
@@ -384,12 +387,15 @@ Inductive has_type : tenv -> tm -> ty -> ql -> bool -> ql -> Prop :=
     plift q1 x ->
     indexr x env = Some (Tx, false, qx) ->
     psub (plift qx) (plift p) -> (* necessary? *)
-    has_type env y T p fr1 (qor (qdiff q1 (qone x)) qx)
+    has_type env y T p fr1 (qor (qdiff q1 (qone x)) qx) *)
 | t_sub_stp: forall env grf y T1 T2 p fr1 q1 fr2 q2,
     has_type env y T1 p fr1 q1 ->
     stp env p grf T1 fr1 q1 T2 fr2 q2 ->
     psub (plift q2) (plift p) -> (* necessary? *)
     has_type env y T2 p fr2 q2
+| t_ascript: forall G e T p fr q,
+    psub (plift q) (plift p) ->
+    has_type G e T p fr q -> has_type G (tas e T fr q) T p fr q
 .
 
 
@@ -458,6 +464,7 @@ Fixpoint teval(n: nat)(M:stor)(env: venv)(t: tm){struct n}: stor * option (optio
                   teval n M'' (vx::env2) ey
               end
           end
+        | tas t T fr q => teval n M env t
       end
   end.
 
@@ -2067,6 +2074,192 @@ Proof.
 Qed.
 
 
+Lemma sem_app2: forall env f t T1 T2 p frf qf frx qx fn1 fr1 q1 fn2 ar2 fr2 q2,
+    sem_type env f (TFun T1 fn1 fr1 q1 T2 fn2 ar2 fr2 q2) p frf (plift qf)->
+    sem_type env t T1 p frx (plift qx) ->
+    (if fn1 then
+       if fr1 then
+         True
+       else
+         (* this case is tricky: *)
+         (* qx < qf won't guarantee vx < vf!!! *)
+         (* need f = tvar x0 and precisely qx = x0 *)
+         frx = false /\ (exists x0, f = tvar x0 /\ sem_qstp env p (plift qx) (por (pone x0) (plift q1))) \/
+         frx = false /\ sem_qstp env p (plift qx) (plift q1)
+     else
+       if fr1 then
+         psub (pand
+                 (plift (vars_trans_fix env qf))
+                 (plift (vars_trans_fix env qx)))
+           (plift q1) \/
+         exists qx', sem_qstp env p (plift qx) (plift qx') /\
+         psub (pand (vars_trans' env (qdiff qx' q1))
+                    (vars_trans' env qf)) pempty
+       else
+         frx = false /\ sem_qstp env p (plift qx) (plift q1)) ->
+
+    psub (plift q2) p ->   (* this is necessary (so far!) *)
+    sem_type env (tapp f t) T2 p
+      (fn2 && frf || ar2 && frx || fr2)
+      (por (pif fn2 (plift qf)) (por (pif ar2 (plift qx)) (plift q2))).
+Proof.
+  intros. intros S0 ? ? ? WFE ST.
+  rename H into IHW1. rename H0 into IHW2.
+  destruct (IHW1 S0 M E V WFE ST) as [S1 [M1 [vf [lvf [IW1 [SC1 [ST1 [HVF [HQF HPF]]]]]]]]]. auto. auto.
+  assert (env_type M1 E env V p) as WFE1. { eapply envt_store_extend; eauto. }
+  destruct (IHW2 S1 M1 E V WFE1 ST1) as [S2 [M2 [vx [lvx [IW2 [SC2 [ST2 [HVX [HQX HPX]]]]]]]]].
+
+  assert (telescope env). eapply envt_telescope. eauto.
+
+  (* vf is a function value: it can eval its body *)
+  destruct vf; try solve [inversion HVF].
+
+  apply valt_wf in HVF as WFQF. apply valt_wf in HVX as WFQX.
+
+  destruct HVF; intuition.
+  rename H8 into HVF.
+  destruct (HVF S2 M2 vx lvx) as [S3 [M3 [vy [lvy [IW3 [SC3 [ST3 [HVY HQY]]]]]]]]. eauto. eauto. eauto.
+
+  (* SEPARATION / OVERLAP *)
+  rename H1 into HSEP.
+  intros ? ?.
+
+  destruct fn1. { (* arg may overlap with function? *)
+    destruct fr1. { (* arg may be fresh? *)
+      (* fn, fr: anything goes *)
+      assert (plift lvf x \/ ~ plift lvf x) as D. unfold plift. destruct (lvf x); eauto.
+      destruct D. right. left. eauto. right. right. simpl. eauto.
+    } {
+      (* fn, not fr *)
+      destruct HSEP as [SEP | SEP]. { (* fn *)
+        destruct SEP as (? & ? & ? & A). subst f frx.
+        destruct (HQX x) as [Hq | Hfr]. eauto. 2: { unfoldq. intuition. }
+        destruct (A M E V) as [_ A']; auto. apply A' in Hq.
+        apply vars_locs_and in Hq. destruct Hq as [_ Hq].
+        destruct Hq as (x1 & [Hx1 | Hx1] & Hq).
+        right. left. simpl. apply HPF. exists x1. auto.
+        left. exists x1. auto.
+      } { (* q1 *)
+        destruct SEP as [? SEP]. subst frx.
+        left. specialize (SEP _ _ _ WFE) as [_ SEP].
+        apply (HQX x) in H1 as [Hq | Hfr]. 2: contradiction.
+        apply SEP in Hq. apply vars_locs_and in Hq. destruct Hq. auto.
+      }
+    }
+  } {
+    destruct fr1. {
+      (* not fn, fr *)
+      destruct HSEP as [HSEP | HSEP]. 2:{
+        assert (plift lvf x \/ ~ plift lvf x) as D.
+        { unfold plift. destruct (lvf x); eauto. }
+        destruct D. 2: { right. right. eauto. } left.
+        destruct HSEP as (qx' & Hqx & HSEP).
+        apply HQX in H1. destruct H1 as [H1 | H1].
+        2: { destruct frx; inversion H1. apply H6 in H7. contradiction. }
+        eapply env_type_store_wf in H1 as HMx. 2: apply WFE.
+        2:{ unfold psub, pand. intuition. }
+        apply Hqx in WFE as Q. destruct Q as [_ Q]. apply Q in H1. clear Q.
+        destruct WFE as (? & ? & ? & ? & WFE). destruct H1 as [y H1].
+        destruct (q1 y) eqn:Hq1y. exists y. intuition. apply not_true_iff_false in Hq1y.
+        assert (vars_locs V (pand p (plift (qdiff qx' q1))) x).
+        { exists y. rewrite plift_diff. unfold pand, pdiff in *. intuition. }
+        apply HQF in H7 as [H7 | H7].
+        2: { destruct frf; inversion H7. contradiction. }
+        eassert (pand (vars_locs V _) (vars_locs V _) x).
+        { split. apply H12. apply H7. } apply WFE in H13.
+        2,3: unfold psub, pand; intuition. apply vars_locs_monotonic with (q' := pempty) in H13.
+        inversion H13. intuition. intros ? Q. apply HSEP.
+        unfold vars_trans'. repeat rewrite plift_vt; auto. destruct Q as [Q1 Q2].
+        split; eapply vt_mono. 2: apply Q1. 3: apply Q2.
+        all: unfold psub, pand; intuition.
+      }
+      assert (plift lvf x \/ ~ plift lvf x) as D. unfold plift. destruct (lvf x); eauto.
+      (*edestruct val_locs_decide.*) destruct D. {
+        left.
+        eapply overlapping. eapply WFE. eauto. eauto. eauto.
+        intros ? [? ?]. eapply HSEP. split.
+        rewrite plift_vt. eapply vt_mono. 2: eapply H8. unfoldq. intuition. eauto.
+        rewrite plift_vt. eapply vt_mono. 2: eapply H9. unfoldq. intuition. eauto.
+        unfoldq. intuition eauto.
+      } {
+        right. right. eauto.
+      }
+    } {
+      (* not fn, not fr *)
+      left. destruct HSEP as [? HSEP]. subst frx.
+      destruct (HQX x) as [Hq | Hfr]. eauto. 2: contradiction.
+      destruct (HSEP _ _ _ WFE) as [SEP _]. apply SEP.
+      apply vars_locs_and in Hq as [_ Hq]. auto.
+    }
+  }
+
+  (* EVALUATION *)
+  exists S3, M3, vy, lvy.
+  split. 2: split. 3: split. 4: split. 5: split.
+  + (* expression evaluates *)
+    (* - initial fuel value *)
+    destruct IW1 as [n1 IW1].
+    destruct IW2 as [n2 IW2].
+    destruct IW3 as [n3 IW3].
+    exists (S (n1+n2+n3)).
+    (* - forall greater fuel *)
+    intros. destruct n. lia.
+    (* - result computes *)
+    simpl. rewrite IW1. rewrite IW2. rewrite IW3.
+    repeat rewrite app_assoc. repeat rewrite app_nil_r. eauto.
+    all: lia.
+
+  (* STORE_EXTEND *)
+  + eapply stchain_chain; eauto.
+    eapply stchain_chain; eauto.
+
+  (* STORE_TYPE *)
+  + eauto.
+
+  (* VAL_TYPE *)
+  + eapply HVY.
+
+  (* VAL_QUAL *)
+  + remember (vabs l t0) as vf.
+    intros ? ?. unfoldq.
+    destruct (HQY  x) as [HY_q | [HY_f | [HY_x | HY_fr]]].
+    repeat rewrite app_length. intuition.
+    * (* q2 *)
+      destruct HY_q.
+      left. exists x0. intuition.
+    * (* part of function *)
+      destruct fn2. 2: contradiction.
+      destruct (HQF x) as [HF_q | HF_fr]. eauto.
+      -- (* q *) destruct HF_q.
+         left. exists x0. intuition.
+      -- (* fr *)
+         destruct frf. 2: contradiction.
+         right. destruct HF_fr; simpl.
+         split. eapply SC3. eapply SC2. eauto. eauto.
+    * (* part of arg *)
+      destruct ar2. 2: contradiction.
+      destruct (HQX x) as [HX_q | HX_fr]. eauto.
+      -- (* q *) destruct HX_q.
+         left. exists x0. intuition.
+      -- (* fr *)
+         destruct frx. 2: contradiction.
+         right. destruct HX_fr.
+         destruct (fn2 && frf); simpl.
+         split. eapply SC3. eauto.
+         intros ?. eapply H9. eapply SC1. eauto.
+         split. eapply SC3. eauto.
+         intros ?. eapply H9. eapply SC1. eauto.
+    * (* fresh *)
+      destruct fr2. 2: contradiction.
+      right. destruct HY_fr.
+      destruct (fn2 && frf || ar2 && frx); simpl.
+      split. eauto. intros ?. eapply H9. eapply SC2. eapply SC1. eauto.
+      split. eauto. intros ?. eapply H9. eapply SC2. eapply SC1. eauto.
+
+  + eauto.
+Qed.
+
+
 (* semantic interpretation of value subtyping *)
 
 Definition sem_stpT G p T1 T2 :=
@@ -3599,6 +3792,161 @@ Proof.
         -- eauto.
 Qed.
 
+(* new sfun rules *)
+
+Lemma sem_stp2_fun_fn1fr1: forall G p T1a q1fn_a        q1a T2a q2fn_a q2ar_a q2fr_a q2a qffr_a qfa
+                                          q1fn_b q1fr_b q1b                              qffr_b qfb,
+  closed_ty (length G) T1a ->
+  closed_ty (length G) T2a ->
+  closed_ql (length G) q1a ->
+  closed_ql (length G) q1b ->
+  closed_ql (length G) q2a ->
+  q1fn_a = true \/ qffr_a = false /\ qfa = pempty ->
+  True ->
+  bsub qffr_a qffr_b ->
+  sem_qstp G p qfa qfb ->
+  sem_stp2 G p false
+    (TFun T1a q1fn_a true   q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa
+    (TFun T1a q1fn_b q1fr_b q1b T2a q2fn_a q2ar_a q2fr_a q2a) qffr_b qfb.
+Proof.
+  unfold sem_stp2, sem_qstp. do 17 intro. do 8 intro.
+  intros HQS ? ? ? ? ? HET HST ? ? HVT HLB. exists ls.
+  apply HQS in HET as HVB. destruct HVB as [HVB1 HVB2]. repeat split; intros.
+  - simpl in *. destruct v; auto. destruct HVT as [? [? [? [? [? HVT]]]]].
+    repeat split; auto. unfold env_type in HET. destruct HET as [HET _].
+    rewrite <- HET in *. auto. intros ? ? ? ? HSE HST2 HVT2 HLB2.
+    apply HVT; auto. intros x Hx. apply HLB2 in Hx. right.
+    destruct H4 as [H4 | [H4a H4b]]; subst.
+    * destruct (ls x) eqn:HLX. left. auto. right. apply not_true_iff_false in HLX. auto.
+    * right. simpl. intro HLX. apply HLB in HLX. destruct HLX as [HLX | HLX].
+      destruct HLX as [x0 [HLXa HLXb]]. inversion HLXa. inversion HLX.
+  - intros x Hx. apply HLB in Hx as [Hx | Hx]. left. intuition. right.
+    destruct qffr_a. unfold bsub in H6. specialize (H6 eq_refl). subst. auto.
+    inversion Hx.
+  - unfold psub; auto.
+  - unfold psub; auto.
+Qed.
+
+Lemma sem_stp2_fun_ar2: forall G p T1a q1fn_a q1a T2a q2fn_a q2fr_a q2a qffr_a qfa
+                                       q2fn_b q2fr_b q2b qffr_b qfb,
+  closed_ty (length G) T1a ->
+  closed_ty (length G) T2a ->
+  closed_ql (length G) q2b ->
+  bsub (q1fn_a || q2fn_a) q2fn_b ->
+  bsub q2fr_a q2fr_b ->
+  bsub qffr_a qffr_b ->
+  sem_qstp G p (por (plift q1a) (plift q2a)) (plift q2b) ->
+  sem_qstp G p qfa qfb ->
+  sem_stp2 G p false
+    (TFun T1a q1fn_a false q1a T2a q2fn_a true  q2fr_a q2a) qffr_a qfa
+    (TFun T1a q1fn_a false q1a T2a q2fn_b false q2fr_b q2b) qffr_b qfb.
+Proof.
+  unfold sem_stp2, sem_qstp. do 16 intro. do 6 intro.
+  intros HQS1 HQS2 ? ? ? ? ? HET HST ? ? HVT HLB. exists ls.
+  repeat split; intros.
+  - apply HQS1 in HET as HET'. destruct HET' as [HETa HETb].
+    simpl in *. destruct v; auto. destruct HVT as [? [? [? [? [? HVT]]]]].
+    repeat split; auto. unfold env_type in HET. destruct HET as [HET _].
+    rewrite <- HET in *. auto. intros ? ? ? ? HSE HST2 HVT2 HLB2.
+    apply (HVT S') in HVT2 as HVT2'; auto. destruct HVT2' as [S'' [M'' [vy [lsy HVT2']]]].
+    exists S'', M'', vy, lsy. intuition. rename H15 into HLY.
+    intros x Hx. apply HLY in Hx. destruct Hx as [Hx | [Hx | [Hx | Hx]]].
+    * left. apply HETa. destruct Hx as [x0 Hx]. exists x0. intuition. right. auto.
+    * right. left. unfold bsub in H2. destruct q2fn_a. specialize (H2 (orb_true_r _)).
+      subst. auto. inversion Hx.
+    * apply HLB2 in Hx. destruct Hx as [Hx | [Hx | Hx]].
+      + left. apply HETa. destruct Hx as [x0 Hx]. exists x0. intuition. left. auto.
+      + right. left. destruct q1fn_a. unfold bsub in H2. specialize (H2 eq_refl).
+        subst. auto. inversion Hx.
+      + inversion Hx.
+    * right. right. right. destruct q2fr_a. specialize (H3 eq_refl). subst. auto. inversion Hx.
+  - apply HQS2 in HET as [HET _].
+    intros x Hx. apply HLB in Hx as [Hx | Hx]. left. intuition. right.
+    destruct qffr_a. unfold bsub in H4. specialize (H4 eq_refl). subst. auto.
+    inversion Hx.
+  - unfold psub; auto.
+  - unfold psub; auto.
+Qed.
+
+Lemma sem_stp2_fun_fn2: forall G p T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a qffr_a qfa
+                                                         q2ar_b q2fr_b q2b qffr_b qfb,
+  closed_ty (length G) T1a ->
+  closed_ty (length G) T2a ->
+  closed_ql (length G) q1a ->
+  closed_ql (length G) q2a ->
+  closed_ql (length G) q2b ->
+  bsub q2ar_a q2ar_b ->
+  bsub q2fr_a q2fr_b ->
+  bsub qffr_a qffr_b ->
+  bsub q1fn_a q1fr_a ->
+  sem_qstp G p (plift q2a) (por (plift q2b) qfb) ->
+  sem_qstp G p qfa qfb ->
+  sem_stp2 G p true
+    (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa
+    (TFun T1a q1fn_a q1fr_a q1a T2a true   q2ar_b q2fr_b q2b) qffr_b qfb.
+Proof.
+  unfold sem_stp2, sem_qstp. do 18 intro. do 9 intro.
+  intros HQS1 HQS2 ? ? ? ? ? HET HST ? ? HVT HLB.
+  apply HQS1 in HET as HQS1'. apply HQS2 in HET as HQS2'.
+  clear HQS1 HQS2.
+  destruct HQS1' as [HQS1 _]. destruct HQS2' as [HQS2 _].
+  exists (qor ls (qdiff (vars_locs_fix V q2a) (vars_locs_fix V q2b))).
+  split; [| split; [| split; [ | intros; discriminate]]].
+  - simpl in *. destruct v; auto. destruct HVT as [? [? [? [? [? HVT]]]]]. intuition.
+    unfold env_type in HET. destruct HET as [HET _]. rewrite <- HET in *. auto.
+    intros x Hx. apply orb_true_iff in Hx. destruct Hx as [Hx | Hx]. auto.
+    assert (Hx': vars_locs V (plift q2a) x). rewrite <- plift_vars_locs. apply andb_true_iff in Hx as [Hx _]. auto.
+    eapply env_type_store_wf2; eauto. auto. apply (HVT S') in H15 as HVT'; auto.
+    * clear HVT. destruct HVT' as [S'' [M'' [vy [lsy HVT]]]]. exists S'', M'', vy, lsy. intuition.
+      intros x Hx. apply H22 in Hx. destruct Hx as [Hx | [Hx | [Hx | Hx]]].
+      + destruct (vars_locs_fix V q2b x) eqn:Hbx. left. rewrite <- plift_vars_locs. auto.
+        right. left. simpl. apply orb_true_iff. right. rewrite <- plift_vars_locs in Hx.
+        apply andb_true_iff. split; auto. apply negb_true_iff. auto.
+      + right. left. simpl. apply orb_true_iff. left. destruct q2fn_a. auto. inversion Hx.
+      + right. right. left. destruct q2ar_a. specialize (H4 eq_refl). subst. auto. inversion Hx.
+      + right. right. right. destruct q2fr_a. specialize (H5 eq_refl). subst. auto. inversion Hx.
+    * intros x Hx. apply H16 in Hx. destruct Hx as [Hx | Hx]. left. auto. right.
+      destruct q1fn_a. specialize (H7 eq_refl). subst.
+      destruct (ls x) eqn:HLX. left. auto. right. apply not_true_iff_false in HLX. auto.
+      destruct Hx as [Hx | Hx]. inversion Hx. right. destruct q1fr_a. intro. apply Hx.
+      apply orb_true_iff. auto. inversion Hx.
+  - intros x Hx. apply orb_true_iff in Hx. destruct Hx as [Hx | Hx].
+    apply HLB in Hx. destruct Hx as [Hx | Hx]. apply HQS2 in Hx. left. auto. right.
+    destruct qffr_a. specialize (H6 eq_refl). subst. auto. inversion Hx.
+    rewrite <- plift_vars_locs in HQS1. apply andb_true_iff in Hx as [Hx Hx'].
+    apply HQS1 in Hx. apply negb_true_iff in Hx'. left. destruct Hx as [x0 Hx].
+    exists x0. intuition. destruct H8 as [Hx | Hx]; auto. exfalso.
+    assert (vars_locs V (plift q2b) x). exists x0. auto.
+    rewrite <- plift_vars_locs in H8. unfold plift in H8. rewrite Hx' in H8. discriminate.
+  - intros x Hx. apply orb_true_iff. left. auto.
+Qed.
+
+Lemma sem_stp2_fun': forall G p gr1 T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a qffr_a qfa
+                                gr2 T1b q1fn_b q1fr_b q1b T2b q2fn_b q2ar_b q2fr_b q2b qffr_b qfb,
+  closed_ty (length G) T1b -> closed_ql (length G) q1b ->
+  closed_ty (length G) T2b -> closed_ql (length G) q2b ->
+  sem_stp2 ((TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a, true, qfa)::G) p gr1
+    T1b q1fr_b
+    (plift (qor q1b (qif q1fn_b (qone (length G)))))
+    T1a q1fr_a
+    (plift (qor q1a (qif q1fn_a (qone (length G))))) ->
+  sem_stp2 ((T1b, q1fr_b, qor q1b (qif q1fn_b (qone (length G))))::(TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a, true, qempty)::G) p gr2
+    T2a q2fr_a
+    (plift (qor q2a (qor (qif q2fn_a (qone (length G))) (qif q2ar_a (qone (S (length G)))))))
+    T2b q2fr_b
+    (plift (qor q2b (qor (qif q2fn_b (qone (length G))) (qif q2ar_b (qone (S (length G))))))) ->
+  bsub qffr_a qffr_b ->
+  sem_qstp G p (plift qfa) qfb ->
+  (gr1 = true -> q2ar_a = true -> sem_qstp G p (plift q1a) (plift q2b)) ->
+  sem_stp2 G p false (* grf: whether it allows to grow locations *)
+    (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a (plift qfa)
+    (TFun T1b q1fn_b q1fr_b q1b T2b q2fn_b q2ar_b q2fr_b q2b) qffr_b qfb.
+Proof.
+  do 26 intro. do 4 intro. intros HS1 HS2 HFB HFQ HGR. unfold sem_stp2 in *.
+  intros S M E V lp HEV HST v ls HVT HLB.
+  eapply envt_extend_full with (fr1 := true) (q1 := qfa) in HVT as HET'.
+  2: eauto. 2: intros x Hx; apply Hx.
+Abort.
 
 (* ---------- *)
 
@@ -3788,16 +4136,6 @@ Lemma stp_qstp: forall G p gr T1 T2 q1 q2 fr1 fr2,
     qstp G p q1 q2 /\ bsub fr1 fr2.
 Proof.
   intros. induction H; eauto.
-  - (* fresh arg, self res *)
-    split. eapply qs_sub. intros ? Q. unfoldq. intuition.
-    eauto. eauto. eauto.
-  - (* covariant self res *) intuition.
-    eapply qs_sub. intros ? Q. eauto. eauto. eauto.
-    unfold bsub. intuition.
-  - intuition.
-    eapply qs_sub. intros ? Q. eauto. eauto. eauto.
-    unfold bsub. intuition. apply qs_sub. intro. intuition. eauto. eauto. intro. eauto.
-  - (* expand arg *) split. apply qs_sub. intro. auto. auto. auto. intro. auto.
   - (* trans *) intuition.
     eapply qs_trans; eauto.
     unfold bsub in *. intuition.
@@ -3833,16 +4171,12 @@ Proof.
     eapply stp_qstp in H0. destruct H0. eapply qstp_closed in H0.
     split; econstructor; intuition.
   - split; econstructor; intuition.
-    intros ?. intuition.
-    intros ?. intuition.
-    intros ?. intuition.
-    intros ?. intuition.
-    intros ?. intuition.
-    intros ?. intuition.
-  - split; econstructor; intuition. intros ? ?. apply H2. apply H6. auto. intros ?. intuition.
-  - split; econstructor; intuition.
-  - split; econstructor; eauto; intro; unfold qempty; intuition. 
-  - intuition.
+  - apply qstp_closed in H3. split; econstructor; intuition.
+    intros x Hx. apply H6. apply orb_true_iff. auto.
+    intros x Hx. apply H6. apply orb_true_iff. auto.
+    intros x Hx. apply H6. apply orb_true_iff. auto.
+  - apply qstp_closed in H6. split; econstructor; intuition.
+    intros ? Q. apply H10. unfold qor. rewrite Q. trivial.
   - intuition.
 Qed.
 
@@ -3868,7 +4202,12 @@ Proof.
   - (* ref *)
     eapply qstp_fundamental in H.
     eapply stp_up2. eapply stp_upT.
-    intros ? ? ? ? ? ?. eauto. eauto. eauto.
+    intros ? ? ? ? ? ?.
+    intros. simpl in *. destruct v; auto. destruct T1; try tauto.
+    eassert (val_type M E V (vbool _) TBool qempty). simpl. auto.
+    unfold sem_stp2 in IHstp1. eapply IHstp1 in H8; eauto.
+    destruct H8 as [ls' [H8 _]]. destruct T2; simpl in H8; auto.
+    intros x Hx; inversion Hx. eauto. eauto.
   - (* fun *)
     eapply stp_closed in H as CLH. destruct CLH as[CLH CLH'].
     eapply stp_closed in H0 as CLH0. destruct CLH0 as [CLH0 CLH0'].
@@ -3886,20 +4225,25 @@ Proof.
     eapply IHstp2.
 
     all: eauto.
-    repeat split; intros; auto. intuition.
-    eapply qstp_fundamental; eauto.
+    intuition. left. apply qstp_fundamental; auto.
+    apply qstp_fundamental; eauto.
     intuition. apply qstp_closed in H7. intuition.
-  - (* fun fresh arg self res *)
-    eapply stp_closed in H6 as CLH. destruct CLH as[CLH CLH'].
-    eapply sem_stp_fun_fresh_arg_to_self; eauto.
-  - (* fun covariant self res *) eapply sem_stp_fun_q2_to_fn2. eauto. eauto. eauto.
-  - eapply sem_stp_fun2; eauto. intuition. right. intuition.
-    apply qstp_fundamental. auto. intro. auto. apply qstp_fundamental. auto.
-    intuition. apply stp_closed in H. intuition. apply stp_closed in H0. intuition.
-    apply qstp_closed in H5. intuition.
-  - (* expand arg *) eapply stp2_up_gr. eapply sem_stp_fun_fn1fr1_to_q1''. eauto. eauto.
-  - (* refl *)
-    intros ? *. intros. exists ls. intuition. unfoldq. intuition. unfoldq. intuition.
+  - (* fn1fr1 *)
+    apply stp2_up_gr. apply sem_stp2_fun_fn1fr1; auto. intuition. right. intuition.
+    apply functional_extensionality. intros. subst. unfold plift, pempty, qempty.
+    apply propositional_extensionality. split; auto. intros. discriminate.
+    apply qstp_fundamental. auto.
+  - (* ar2 *)
+    apply stp2_up_gr. apply sem_stp2_fun_ar2; auto. apply qstp_closed in H3 as [_ ?]. auto.
+    replace (por (plift q1a) (plift q2a)) with (plift (qor q1a q2a)). apply qstp_fundamental. auto.
+    apply functional_extensionality. intros. apply propositional_extensionality.
+    apply orb_true_iff. apply qstp_fundamental. auto.
+  - (* fn2 *)
+    apply qstp_closed in H6 as ?. destruct H9 as [? ?].
+    apply sem_stp2_fun_fn2; auto. intros ? Q. apply H10. unfold qor. rewrite Q. trivial.
+    replace (por (plift q2b) (plift qfb)) with (plift (qor q2b qfb)).
+    apply qstp_fundamental; auto. apply plift_or.
+    apply qstp_fundamental; auto.
   - (* trans *)
     intros ? *. intros.
     edestruct IHstp1; eauto.
@@ -3907,6 +4251,8 @@ Proof.
     eexists. intuition. eapply H5. eapply H8.
     unfoldq. intuition.
     unfoldq. intuition.
+Unshelve.
+  apply true. apply pempty.
 Qed.
 
 
@@ -3941,16 +4287,28 @@ Proof.
   - rewrite plift_empty. eapply sem_get; eauto.
   - rewrite plift_empty. eapply sem_put; eauto.
   - repeat rewrite plift_or in *. repeat rewrite plift_if in *.
-    eapply sem_app; eauto.
+    eapply sem_app2; eauto. destruct fn1; destruct fr1; intuition.
+    * left. destruct H2. intuition. eexists. split; eauto.
+      rewrite <- plift_one. rewrite <- plift_or.
+      apply qstp_fundamental. auto.
+    * right. intuition. apply qstp_fundamental. auto.
+    * right. destruct H as (qx' & H1 & H2). exists qx'. split.
+      apply qstp_fundamental; auto. auto.
+    * apply qstp_fundamental. auto.
   - repeat rewrite plift_or in *.
     repeat rewrite plift_and in *.
     repeat rewrite plift_if in *.
     repeat rewrite plift_one in *.
     eapply sem_abs; eauto.
-  - eapply sem_sub; eauto.
+  (* - eapply sem_sub; eauto.
   - rewrite plift_or, plift_diff, plift_one.
-    eapply sem_sub_var; eauto.
+    eapply sem_sub_var; eauto. *)
   - eapply sem_sub_stp. eauto. eapply stp_fundamental; eauto.
+  - unfold sem_type in *. intros S M E V Het H0. specialize (IHW S M E V Het H0).
+    unfold exp_type in *. destruct IHW as [S' [M' [v [ls IHW]]]].
+    exists S'. exists M'. exists v. exists ls. intuition.
+    unfold tevaln in *. destruct H1 as [nm H1]. exists (Datatypes.S nm). intros.
+    unfold teval. simpl. destruct n. lia. fold teval. apply H1. lia.
 Qed.
 
 
@@ -4065,19 +4423,20 @@ Lemma hast_closed: forall env t T1 p fr1 q1, (* note: needs telescope env? *)
     has_type env t T1 p fr1 q1 ->
     telescope env ->
     closed_ty (length env) T1 /\
-      closed_ql (length env) q1.
+      closed_ql (length env) q1 /\
+      psub (plift q1) (plift p).
 Proof.
   intros. induction H.
-  - split. econstructor. intros ? Q. inversion Q.
-  - split. econstructor. intros ? Q. inversion Q.
-  - split. specialize (H0 x _ _ _ H). intuition.
+  - repeat split. econstructor. intros ? Q. inversion Q. intros ? Q. inversion Q.
+  - repeat split. econstructor. intros ? Q. inversion Q. intros ? Q. inversion Q.
+  - repeat split. specialize (H0 x _ _ _ H). intuition.
     eapply closedty_extend; eauto. eapply indexr_var_some' in H. lia.
     eapply closedq_extend. eapply indexr_var_some' in H. 2: eauto.
     intros ? ?. unfold qone in H2. bdestruct (x0 =? x). subst. eauto.
-    inversion H2.
+    inversion H2. intros ? Q. apply Nat.eqb_eq in Q; subst. auto.
   - intuition. econstructor. eauto.
-  - intuition. inversion H2. eauto. intros ? Q. inversion Q.
-  - intuition. intros ? Q. inversion Q.
+  - intuition. inversion H2. eauto. intros ? Q. inversion Q. intros ? Q. inversion Q.
+  - intuition. intros ? Q. inversion Q. intros ? Q. inversion Q.
   - intuition. inversion H5. eauto.
     inversion H5. subst.
     rewrite closedql_or_dist. rewrite closedql_or_dist.
@@ -4085,17 +4444,21 @@ Proof.
     rewrite qif_false. intros ? Q. inversion Q.
     destruct ar2; intuition.
     rewrite qif_false. intros ? Q. inversion Q.
+    unfold qif. intros ? Q.
+    apply orb_prop in Q as [Q | Q]. 2: apply orb_prop in Q as [Q | Q].
+    destruct fn2; intuition. destruct ar2; intuition. intuition.
   - intuition. econstructor; intuition.
-  - intuition.
+  (* - intuition.
   - intuition. rewrite closedql_or_dist. intuition.
     intros ? Q. unfold qdiff in *. eapply H6. destruct (q1 x0). eauto.
     inversion Q.
-    eapply closedq_extend. eapply H0. eauto. eapply indexr_var_some' in H2. lia.
+    eapply closedq_extend. eapply H0. eauto. eapply indexr_var_some' in H2. lia. *)
   - intuition.
     eapply stp_closed in H1. intuition.
     eapply stp_qstp in H1. destruct H1.
     eapply qstp_closed in H1. destruct H1.
     eauto.
+  - intuition.
 Qed.
 
 
@@ -4115,21 +4478,16 @@ Lemma stp_qs: forall T1 env p gr q1 q2 fr1 fr2, (* XXX: check if this holds! *)
 Proof.
   intros T1. induction T1; intros.
   - eapply s_bool; eauto.
-  - inversion H. eapply s_ref; eauto.
-  - inversion H. eapply s_fun; eauto.
+  - inversion H. eapply s_ref; eauto; apply s_refl; auto.
+    all: intros ? H'; inversion H'.
+  - inversion H; subst. eapply s_fun with (gr1 := false); eauto.
     eapply IHT1_1; eauto.
     eapply qs_sub. intros ? Q. eapply Q.
     eauto. eauto.
     unfold bsub. eauto.
     eapply IHT1_2; eauto.
     eapply qs_sub. intros ? Q. eapply Q.
-    eauto. eauto.
-    unfold bsub. eauto.
-    unfold bsub. eauto.
-    unfold bsub. eauto.
-    unfold bsub. eauto.
-    unfold bsub. eauto.
-    unfold bsub. eauto.
+    all: unfold bsub; eauto. intuition.
 Unshelve.
     apply true.
 Qed.
@@ -4178,10 +4536,13 @@ Lemma t_app_plain: forall env f t T1 T2 p frf qf q1 ar2 fr2 q2 q1' q2',
     psub (plift q2) (plift p) ->   (* this is necessary (so far!) *)
     psub (plift q2') (plift p) ->   (* this is necessary (so far!) *)
     psub (plift (qor (qif ar2 q1') q2)) (plift q2') ->
+    telescope env ->
     has_type env (tapp f t) T2 p fr2 q2'.
 Proof.
   intros. eapply t_sub_stp. eapply t_app. eauto. eauto.
-  simpl. unfoldq. intuition. eauto.
+  simpl. intuition. apply hast_closed in H as H'.
+  destruct H' as [H' _]. inversion H'; subst. apply qs_sub.
+  auto. intros x Hx. apply H20. apply H3. auto. auto. auto. auto.
   rewrite qif_false, qor_emptyl.
   eapply stp_qs. eauto. eapply qs_sub. eauto.
   rewrite plift_closed' in *. unfoldq. intuition.
@@ -4218,10 +4579,10 @@ Proof.
   eauto.
   eapply hast_closed. eauto. eauto.
   eauto.
-  eauto.
+  eauto. crush.
   eauto.
   destruct ar2; crush. crush. crush.
-  destruct ar2; crush. crush.
+  destruct ar2; crush. crush. auto.
 Qed.
 
 
@@ -4247,8 +4608,15 @@ Proof.
   eauto.
   eauto.
   eauto.
-  eauto.
-  simpl. intros ? (? & Q). eapply Q.
+  eauto. crush.
+  simpl. apply hast_closed in H as Hc; auto. exists q1. split.
+  apply qs_sub; crush. replace (qdiff q1 (vars_trans_fix env q1)) with qempty.
+  replace (vars_trans' env qempty) with pempty. crush.
+  unfold vars_trans'. rewrite plift_vt; auto.
+  apply functional_extensionality; intros. apply propositional_extensionality; intuition.
+  destruct H9. inversion H9. destruct H9 as (? & ? & ?). inversion H9.
+  apply functional_extensionality; intros. unfold qdiff, qempty.
+  destruct (q1 x) eqn:?; auto. eapply vars_trans_monotonic in Heqb. rewrite Heqb. auto.
   eauto.
   qsimpl. simpl. replace (ar2 && true) with ar2. 2: eauto with bool.
   rewrite qor_comm. rewrite orb_comm.
@@ -4317,9 +4685,10 @@ Lemma t_boxf_transparent: forall env p A a,
     closed_ty (length env) A ->
     closed_ql (length env) a ->
     psub (plift a) (plift p) ->
+    telescope env ->
     has_type env (tboxf (length env)) (TBoxf_transparent A a) p false a.
 Proof.
-  intros. unfold ql in *.
+  intros. unfold ql in *. rename H2 into HTS.
 
   eapply t_abs. {
     qsimpl. remember (_ :: env) as env1.
@@ -4352,7 +4721,8 @@ Proof.
         eapply indexr_head. eauto.
         crush. closed. crush. crush.
       }
-      all: closed; crush.
+      1-6: closed; crush. subst. apply telescope_extend. crush. simpl. crush.
+      closed. apply telescope_extend; auto.
     }
     all: closed; crush.
     all: subst; simpl; crush.
@@ -4366,16 +4736,17 @@ Lemma t_box_transparent: forall env t p A a,
     closed_ty (length env) A ->
     closed_ql (length env) a ->
     psub (plift a) (plift p) ->
+    telescope env ->
     has_type env (tbox (length env) t) (TBox_transparent A a) p false a.
 Proof.
   intros. unfold ql in *.
 
   eapply t_app_plain. {
-    eapply t_boxf_transparent. eauto. eauto. eauto.
+    eapply t_boxf_transparent. eauto. eauto. eauto. auto.
   } {
     eauto.
   }
-  all: closed; crush.
+  all: auto; closed; crush.
 Qed.
 
 Lemma t_unbox_transparent: forall env t p A a b,
@@ -4384,6 +4755,7 @@ Lemma t_unbox_transparent: forall env t p A a b,
     closed_ql (length env) a ->
     closed_ql (length env) p ->
     psub (plift a) (plift p) ->
+    telescope env ->
     has_type env (tunbox (length env) t) A p false a.
 Proof.
   intros. unfold tenv, ql in *.
@@ -4420,13 +4792,17 @@ Lemma ex_box_unbox_transparent1:
       false
       (qone 0).
 Proof.
+  assert (telescope [(TRef TBool, true, qempty)]). {
+    apply telescope_extend. crush. closed. unfold telescope.
+    intros. simpl in H. discriminate.
+  }
   eapply t_let_plain. {
     eapply t_box_transparent. {
       eapply t_var. simpl. eauto. crush.
     }
     closed.
     crush. simpl. lia.
-    crush.
+    crush. auto.
   } {
     eapply t_unbox_transparent with (a:=qone 0). {
       eapply t_var. simpl. eauto.
@@ -4434,17 +4810,18 @@ Proof.
     }
     all: crush.
     closed.
-    all: simpl in *; lia.
+    1-3: simpl in *; lia.
+    assert (closed_ql 1 (qone 0)). {
+      intros ? Q. apply Nat.eqb_eq in Q. subst; lia.
+    }
+    apply telescope_extend; auto; simpl.
+    closed; closed.
   }
   crush. crush.
   closed.
   crush. simpl. lia.
   crush. simpl. lia.
   all: crush.
-  (* telescope *)
-  intros ? ? ? ? ?.
-  destruct x. simpl in *. inversion H. subst. intuition. constructor. constructor.
-  intros ? Q. inversion Q. simpl in H. inversion H.
 Qed.
 
 (*
@@ -4477,7 +4854,10 @@ Proof.
   eapply t_app. {
     eapply t_var_plain. eapply indexr_head. eauto. closed. all: crush.
   }
-  2: { simpl. left. intuition. eexists. intuition. rewrite plift_one. intros ? Q. eauto. }
+  2: { simpl. left. intuition. eexists. intuition. qsimpl.
+    apply qs_sub. intros ? Q. eauto.
+    all: crush; subst; simpl; auto.
+  }
   {
     eapply t_abs. {
       qsimpl.
@@ -4485,7 +4865,8 @@ Proof.
       crush.
     }
     all: crush.
-    closed. closed. subst. simpl. unfold ql. lia.
+    closed. closed. subst. simpl. auto. 
+    exfalso. eapply Nat.lt_irrefl. auto.
   }
   crush.
   eapply stp_qs. closed. eapply qs_trans. eapply qs_var.
@@ -4599,7 +4980,7 @@ Proof.
         eapply indexr_head. eauto.
         crush. closed. crush. crush.
       }
-      simpl. crush. (* x0 < a *) crush. (* use q1 qualifier *)
+      simpl. intuition. apply qs_sub; crush; subst; simpl; intuition. crush.
       qsimpl.
       eapply stp_refl. closed. crush. subst. simpl. unfold ql. lia.
       crush.
@@ -4621,6 +5002,7 @@ Lemma t_box_transparent2: forall env t p A a,
     closed_ty (length env) A ->
     closed_ql (length env) a ->
     psub (plift a) (plift p) ->
+    telescope env ->
     has_type env (tbox (length env) t) (TBox_transparent2 A a) p false a.
 Proof.
   intros. unfold ql in *.
@@ -4630,7 +5012,7 @@ Proof.
   } {
     eauto.
   }
-  all: closed; crush.
+  all: auto; closed; crush.
 Qed.
 
 Lemma t_unbox_transparent2: forall env t p A a b,
@@ -4666,6 +5048,7 @@ Proof.
     crush.
     crush.
     crush.
+    crush.
   }
   crush. crush.
   eapply stp_refl. closed. crush. eauto.
@@ -4692,13 +5075,17 @@ Lemma ex_box_unbox_transparent2:
       false
       (qone 0).
 Proof.
+  assert (telescope [(TRef TBool, true, qempty)]). {
+    apply telescope_extend. crush. closed. unfold telescope.
+    intros. inversion H.
+  }
   eapply t_let_plain. {
     eapply t_box_transparent2. {
       eapply t_var. simpl. eauto. crush.
     }
     closed.
     crush. simpl. lia.
-    crush.
+    crush. auto.
   } {
     eapply t_unbox_transparent2 with (a:=qone 0). {
       eapply t_var. simpl. eauto.
@@ -4713,10 +5100,6 @@ Proof.
   crush. simpl. lia.
   crush. simpl. lia.
   all: crush.
-  (* telescope *)
-  intros ?. intros. destruct x; simpl in *.
-  inversion H. subst. intuition. constructor. constructor. intros ? Q. inversion Q.
-  inversion H.
 Qed.
 
 (*
@@ -4786,6 +5169,54 @@ Qed.
 
 *)
 
+Lemma trans_to_opaque_outer: forall G p A1 A2 B fr q,
+  closed_ty (length G) A1 ->
+  closed_ty (length G) A2 ->
+  closed_ty (length G) B ->
+  closed_ql (length G) q ->
+  stp G p true A2 true qempty A1 true q ->
+  stp G p true
+    (TFun_trans_outer A1 B) fr q
+    (TFun_opaque_outer A2 B) fr q.
+Proof.
+  intros. rename H3 into Hs. eapply s_trans.
+  { eapply s_fun_fn1fr1 with (q1fn_b := true) (q1fr_b := true) (q1b := q); auto.
+    crush. crush. intro H'; apply H'.
+    apply qs_sub. intros ? H'; apply H'. auto. auto. }
+  eapply s_trans.
+  { eapply s_fun. 3-8: intro H'; apply H'. simpl. apply Hs. simpl.
+    2,3: intros; apply qs_sub; [ intros ? H'; apply H' | |]; auto.
+    apply stp_qs; auto. apply qs_sub; auto. crush. crush. intro; auto. }
+  { apply s_fun_fn2; auto. crush. crush. 1-3,5: intro; auto.
+    all: apply qs_sub; auto. all: crush. }
+Unshelve.
+  apply true.
+Qed.
+
+Lemma trans_to_opaque_inner: forall G p A B fr q q1 q2,
+  closed_ty (length G) A ->
+  closed_ty (length G) B ->
+  closed_ql (length G) q ->
+  closed_ql (length G) q1 ->
+  closed_ql (length G) q2 ->
+  qstp G p q q2 ->
+  qstp G p q1 q2 ->
+  stp G p true
+    (TFun_opaque_inner A B) fr q1
+    (TFun_trans_inner A q B) fr q2.
+Proof.
+  intros. eapply s_trans.
+  { eapply s_fun_fn1fr1 with (q1b := q); auto. crush. crush.
+    intro H'; apply H'.
+    apply qs_sub. intros ? ?; eauto. auto. auto. }
+  eapply s_trans.
+  { eapply s_fun_ar2; auto. rewrite orb_true_r. 1,2,4: intro H'; apply H'.
+    apply qs_sub. intros ? ?; eauto. crush. crush.
+    apply qs_sub. intros ? ?; eauto. crush. crush. }
+  { apply s_fun_fn2; auto. crush. 1-3,5: intro; auto.
+    rewrite qor_empty. auto. }
+Qed.
+
 Lemma upcast_box: forall env e2 fr,
     env = [e2;(TRef TBool, true, qempty)] ->
     stp env (qor (qone 0) (qone 1)) true
@@ -4809,25 +5240,11 @@ Proof.
        (TRef TBool)) fr (qone 0)
 *)
 
-  eapply s_trans.
-  eapply s_fun_expand_arg with (q1b := qone 0).
-  1,2: closed. 1,2: constructor.
-  1-4: intro; subst; unfold qone, qempty; simpl; intro; try apply Nat.eqb_eq in H; lia.
-  intuition.
-  eapply s_fun_non_drop_grow; unfold bsub; simpl; auto.
-  eapply s_fun_fresh_arg_to_self_res with (q1a := qone 0); eauto.
-  closed. crush. crush.
-  subst. simpl. lia. crush.
-  subst. simpl. lia.
-  crush. crush. crush.
-  eapply s_refl. closed. crush.
-  subst. simpl. lia.
-  unfold bsub. eauto.
-  eapply s_refl. closed. crush.
-  eapply qs_sub. crush. crush. subst. simpl. lia. crush. subst. simpl. lia.
-  apply qs_sub. all: crush; subst; simpl; lia.
-Unshelve.
-  apply true.
+  apply trans_to_opaque_outer.
+  1-3: closed. 1,2,5,6: closed. 1-5: crush; subst; simpl; lia.
+  apply trans_to_opaque_inner.
+  1-2: closed. 1-3: crush; subst; simpl; lia.
+  all: apply qs_sub; crush. all: subst; simpl; lia.
 Qed.
 
 
@@ -4847,11 +5264,15 @@ Proof.
       eapply t_ref. eapply t_true.
     } {
       (* remember ([(_,_,_)]) as env. *)
-      simpl. qsimpl. eapply t_let_plain with (q1:=qone 0). { (* inner let *)
+      simpl. qsimpl. assert (telescope [(TRef TBool, true, qempty)]). {
+        apply telescope_extend. crush. closed. unfold telescope.
+        intros. inversion H.
+      }
+      eapply t_let_plain with (q1:=qone 0). { (* inner let *)
         eapply t_sub_stp. eapply t_box_transparent2. {
           eapply t_var. simpl. eauto. crush.
         }
-        closed. crush. simpl. crush. crush.
+        closed. crush. simpl. crush. crush. auto.
         eapply stp_refl. all: crush. closed. 1,2,5: closed.
         all: crush; simpl; try lia.
       } {
@@ -4877,10 +5298,7 @@ Proof.
       crush. simpl. lia.
       2: crush.
       2: crush.
-      (* telescope *)
-      intros ?. intros. destruct x; simpl in *.
-      inversion H. subst. intuition. closed. intros ? Q. inversion Q.
-      inversion H.
+      auto.
     }
 
     { closed. 1,2,5: closed. all: crush. }
@@ -4946,62 +5364,43 @@ Lemma t_pairf_transparent: forall env p A a1 a2,
 Proof.
   intros. unfold ql in *.
 
-  eapply t_abs; try crush.
-  2: repeat (apply c_fun; try crush).
-  assert (psub (plift (qor a1 a2)) (plift p)).
-  crush.
-  replace (qand p (qor a1 a2)) with (qor a1 a2).
-  2: crush.
-  eapply t_abs; try crush.
-  2: { eapply closedty_extend. exact H. crush. }
-  2: { eapply closedty_extend. apply c_fun. 2: exact H. apply c_fun. 2: apply c_fun. all: crush. }
-  2-5: simpl; try (rewrite H7 || rewrite H6); crush.
-  replace (qor (qand a1 a2) a2) with a2.
-  2: rewrite qor_sub_id; crush.
-  eapply t_abs; try crush.
-  3: { eapply closedty_extend. exact H. crush. }
-  2: { eapply closedty_extend. apply c_fun. exact H. apply c_fun. all: crush. }
-  2-5: simpl; try (rewrite H6 || rewrite H5); crush.
-  eapply t_sub_stp.
-  3: crush.
-  eapply t_app.
-  eapply t_app.
-  replace (2 + length env) with (length ((A, false, a2) :: (A, false, a1) :: env)) at 1.
-  2: crush.
-  eapply t_var.
-  apply indexr_head.
-  crush.
-  apply t_var_plain.
-  rewrite indexr_skip.
-  rewrite indexr_skip.
-  apply indexr_head.
-  1,2: simpl; intuition.
-  crush.
-  eapply closedty_extend.
-  exact H.
-  simpl; intuition.
-  1,2,3,4,7: crush.
-  apply t_var_plain.
-  replace (1 + length env) with (length ((A, false, a1) :: env)) at 1.
-  2: crush.
-  rewrite indexr_skip.
-  apply indexr_head.
-  simpl; intuition.
-  1,4: crush.
-  eapply closedty_extend.
-  exact H.
-  simpl; crush.
-  replace (1 + length env) with (length ((A, false, a1) :: env)) at 1.
-  2: crush.
-  crush; simpl; intuition.
-  crush.
-  simpl.
-  crush.
-  apply s_refl; crush.
-  eapply closedty_extend.
-  exact H.
-  simpl; intuition.
-  rewrite H5; intuition.
+  eapply t_abs; try crush. {
+    assert (psub (plift (qor a1 a2)) (plift p)). crush.
+    replace (qand p (qor a1 a2)) with (qor a1 a2). 2: crush.
+    eapply t_abs; try crush. {
+      replace (qor (qand a1 a2) a2) with a2. 2: rewrite qor_sub_id; crush.
+      eapply t_abs; try crush. {
+        eapply t_sub_stp. {
+          eapply t_app. {
+            eapply t_app. {
+              replace (2 + length env) with (length ((A, false, a2) :: (A, false, a1) :: env)) at 1.
+              eapply t_var. apply indexr_head. crush. crush.
+            } {
+              apply t_var_plain.
+              rewrite indexr_skip. rewrite indexr_skip. apply indexr_head.
+              auto. simpl; lia. crush. closed. crush. crush.
+            }
+            simpl. intuition. apply qs_sub; crush; simpl; intuition.
+            crush.
+          } {
+            replace (1 + length env) with (length ((A, false, a1) :: env)).
+            apply t_var_plain.
+            rewrite indexr_skip. apply indexr_head. simpl; intuition.
+            crush. closed. crush. apply H1 in H5. simpl; lia.
+            crush. crush.
+          }
+          simpl. intuition. apply qs_sub; crush; simpl; intuition.
+          crush.
+        } {
+          simpl. crush. apply s_refl; crush. closed. subst. simpl. intuition.
+        }
+        crush.
+      }
+      1-2: closed; crush. all: subst; simpl; intuition.
+    }
+    1-2: closed. closed. 1-4: crush. all: simpl; subst; intuition.
+  }
+  repeat closed. all: crush.
 Unshelve.
   apply true.
 Qed.
@@ -5031,7 +5430,8 @@ Proof.
   exact H2.
   exact H3.
   all: crush.
-  simpl.
+  apply qs_sub; crush.
+  apply qs_sub; crush.
   replace (qor (qor a1 a2) a1) with (qor a1 a2).
   replace (qor (qor a1 a2) a2) with (qor a1 a2).
   2,3: symmetry; rewrite qor_comm; apply qor_sub_id; crush.
@@ -5040,54 +5440,6 @@ Proof.
   all: crush.
 Unshelve.
   apply true.
-Qed.
-
-
-(* typing of fst p -- spelling out intermediate steps for clarity, though not strictly needed *)
-
-Lemma aux1: forall env p fr A b,
-    closed_ty (length env) A ->
-    closed_ql (length env) b ->
-    psub (plift b) (plift p) ->
-    stp env p false
-      (TFun_trans_inner_ignore A A) fr qempty
-      (TFun_trans_inner A b A) fr qempty.
-Proof.
-  intros. eapply s_fun_fresh_arg_to_self_res; eauto. 
-  crush. crush. crush. crush.
-  eapply s_refl; eauto.
-  unfold bsub. eauto.
-Qed.
-
-Lemma aux2: forall env p fr A a b,
-    closed_ty (length env) A ->
-    closed_ql (length env) a ->
-    closed_ql (length env) b ->
-    psub (plift b) (plift p) ->
-    stp env p false
-      (TFun_trans_inner A a (TFun_trans_inner_ignore A A)) fr qempty
-      (TFun_trans_inner A a (TFun_trans_inner A b A)) fr qempty.
-Proof.
-  intros. eapply s_fun. eapply s_refl; eauto.
-  eapply aux1; eauto.
-  all: unfold bsub; eauto.
-  eapply qs_sub; crush. 
-Qed.
-
-Lemma t_pair_to_fst: forall env p A a b fr,
-    closed_ty (length env) A ->
-    closed_ql (length env) a ->
-    closed_ql (length env) b ->
-    psub (por (plift a) (plift b)) (plift p) ->
-    stp env p true (TPair_trans A a b) fr (qor a b) (TPair_trans_fst A a) fr (qor a b). 
-Proof.
-  intros. 
-  eapply s_fun. simpl. eapply aux2; eauto. crush.
-  simpl. eapply s_refl; eauto. crush. 
-  all: unfold bsub; eauto.
-  eapply qs_sub; crush.
-Unshelve.
-  eapply false.
 Qed.
 
 
@@ -5156,20 +5508,20 @@ Lemma t_fst_transparent: forall env p t A a1 a2,
 Proof.
   intros. unfold tenv, ql in *. 
   eapply t_sub_stp. {
-    eapply t_app. {
+    eapply t_app. apply H. {
       eapply t_sub_stp.
-      eapply H. 
-      eapply t_pair_to_fst; eauto.
-      crush. crush. 
-    } {
-      eapply t_fstf; eauto.
+      { eapply t_fstf. apply H3. eauto. auto. } 2: apply H3. {
+        eapply s_fun. apply s_refl; auto. apply s_fun_fn1fr1; auto.
+        crush. crush. intro; auto. apply qs_sub; crush.
+        1-6: intros H'; apply H'. apply qs_sub; crush. intros; discriminate.
+      }
     }
     all: crush.
   }
   simpl. qsimpl. eapply s_refl; eauto.
   crush.
 Unshelve.
-  eapply false. 
+  all: apply false. 
 Qed.
 
 
@@ -5183,41 +5535,29 @@ Lemma t_snd_transparent: forall env p t A a1 a2,
     has_type env (tsnd (length env) t) A p false a2.
 Proof.
   intros.
-  eapply t_sub_stp.
-  eapply t_app with (frx := false) (qx := a2).
-  assert (has_type env t (TPair_trans_snd A a2) p false (qor a1 a2)). {
-    eapply t_sub_stp.
-    apply H.
-    2: crush.
-    eapply s_fun.
-    2: apply s_refl.
-    10: apply qs_sub.
-    2,3,10-12: crush.
-    2-7: unfold bsub; eauto.
-    simpl.
-    eapply s_fun_fresh_arg_to_self_res.
-    8: apply s_refl.
-    closed.
-    all: crush.
-    unfold bsub.
-    eauto.
+  eapply t_sub_stp. {
+    eapply t_app with (frx := false) (qx := a2). apply H. {
+      eapply t_sub_stp; auto. {
+        eapply t_sub_stp. {
+          eapply (t_abs _ _ A _ _ true true qempty true false false a2 a2); auto. qsimpl.
+          eapply (t_abs _ _ A A _ false false a2 true false false qempty _). qsimpl.
+          replace (1 + length env) with (length ((A, true, a2) :: env)).
+          eapply t_var_plain. rewrite indexr_head. repeat f_equal.
+          all: try solve [crush | closed]. 4: closed; crush.
+          all: rewrite plift_closed'; unfold pdom; simpl; crush.
+        } {
+          apply s_fun_fn2 with (q2b := qempty); auto. closed. crush. crush. crush.
+          1-3: intro H'; apply H'. apply qs_sub. intros ? H'; apply H'. auto. auto.
+          intro H'; apply H'. apply qs_sub; crush.
+        }
+        auto.
+      }
+      apply s_fun_fn1fr1; auto. closed. crush. crush. crush. intro; auto.
+      apply qs_sub; crush.
+    }
+    crush. crush.
   }
-  exact H5. {
-    apply t_abs; crush.
-    2: closed; crush.
-    apply t_abs; crush.
-    apply t_var_plain; crush.
-    replace (1 + length env) with (length ((A, true, a2) :: env)).
-    apply indexr_head.
-    crush.
-    1-4: closed.
-    apply H2 in H5.
-    lia.
-    all: simpl; intuition.
-  }
-  all: simpl; crush.
-  apply s_refl.
-  all: crush.
+  simpl. qsimpl. apply s_refl; crush. auto.
 Unshelve.
   all: apply true.
 Qed.
@@ -5233,23 +5573,22 @@ Lemma t_pair_trans_to_opaque: forall env p t A a1 a2,
     has_type env t (TPair_opaque A) p false (qor a1 a2).
 Proof.
   intros.
-  eapply t_sub_stp.
-  apply H.
-  2: crush.
-  eapply s_trans.
-  apply s_fun_expand_arg with (q1b := qor a1 a2). closed. 1-6: crush.
-  eapply s_fun_non_drop_grow; unfold bsub; eauto.
-  2: apply stp_refl. 2-9: crush. 2,3: apply qs_sub; crush.
-  eapply s_trans. eapply s_fun_fresh_arg_to_self_res with (q1b := qor a1 a2).
-  8: apply stp_refl. 7: intros ? ? ?; eauto. closed. 1-10: crush. unfold bsub; eauto.
-  eapply s_trans. eapply s_fun. apply stp_qs with (q1 := a1). crush. apply qs_sub.
-  crush. crush. crush. unfold bsub. eauto.
-  eapply s_fun_fresh_arg_to_self_res with (q1b := a2).
-  8: apply stp_refl. 7: intros ? ?; eauto. 1-9: crush. 1-7: unfold bsub; eauto.
-  apply qs_sub. intros ? ?. eauto. crush. crush.
-  apply s_fun_q2_to_fn2. 1-8: crush. closed. crush.
-Unshelve.
-  apply true.
+  eapply t_sub_stp. apply H. 2: crush.
+  apply trans_to_opaque_outer. closed; crush. closed; crush. auto. crush.
+  eapply s_trans. eapply s_trans. {
+    eapply s_fun. apply s_refl with (grf := false); auto. crush.
+    2-7: intro H'; apply H'. simpl.
+    apply trans_to_opaque_inner with (q := a2); auto.
+    3,5: apply qs_sub; [intros ? H'; apply H' | |]. 1-6: crush.
+    apply qs_sub; crush. intuition.
+  } {
+    apply s_fun_fn2 with (q2b := qempty); auto. closed. 1-3: crush.
+    1-3: intro H'; apply H'. apply qs_sub. intros ? H'; apply H'. auto. auto.
+    intro H'; apply H'. apply qs_sub; crush.
+  } {
+    apply trans_to_opaque_inner; auto. closed. crush. crush.
+    all: apply qs_sub. all: crush.
+  }
 Qed.
 
 
@@ -5347,5 +5686,1136 @@ Unshelve.
   all: apply true.
 Qed.
 
+
+Definition bind {A B: Set} (a: option A) (f: A -> option B) :=
+  match a with
+  | Some a' => f a'
+  | None => None
+  end.
+
+Notation "'let*' p ':=' c1 'in' c2" := (@bind _ _ c1 (fun p => c2))
+  (at level 61, p as pattern, c1 at next level, right associativity).
+
+Ltac crush_match H := try unfold bind in H; match type of H with
+| match ?m with _ => _ end = Some _ =>
+    let Heq := fresh "Heqm" in
+    destruct m eqn:Heq; try discriminate; try crush_match Heq; try crush_match H
+| (if ?b then _ else _) = Some _ =>
+    let Heq := fresh "Heqb" in
+    destruct b eqn:Heq; try discriminate; try crush_match H
+| (let '(_, _) := ?p in _) = Some _ =>
+    destruct p as [? ?]; try crush_match H
+| Some _ = Some _ =>
+    inversion H; subst; clear H
+end.
+
+Ltac crush_match' H := try unfold bind in H; match type of H with
+| match ?m with _ => _ end = Some _ =>
+    let Heq := fresh "Heqm" in
+    destruct m eqn:Heq; try discriminate
+| (if ?b then _ else _) = Some _ =>
+    let Heq := fresh "Heqb" in
+    destruct b eqn:Heq; try discriminate
+| (let '(_, _) := ?p in _) = Some _ =>
+    destruct p as [? ?]
+| Some _ = Some _ =>
+    inversion H; subst; clear H
+end.
+
+Fixpoint closed_tm (Γ: nat) (e: tm) : Prop :=
+  match e with
+  | ttrue | tfalse => True
+  | tvar n => n < Γ
+  | tref t => closed_tm Γ t
+  | tget t => closed_tm Γ t
+  | tput t1 t2 => closed_tm Γ t1 /\ closed_tm Γ t2
+  | tapp t1 t2 => closed_tm Γ t1 /\ closed_tm Γ t2
+  | tabs t => closed_tm (S Γ) t
+  | tas t T fr q => closed_tm Γ t /\ closed_ty Γ T /\ closed_ql Γ q
+  end.
+
+Fixpoint check_subset (n: nat) (a b: ql) : bool :=
+  match n with
+  | S n' => if implb (a n') (b n') then check_subset n' (qdiff a (qone n')) b else false
+  | 0 => true
+  end.
+
+Lemma check_subset_is_sound: forall n a b,
+  closed_ql n a -> check_subset n a b = true -> psub (plift a) (plift b).
+Proof.
+  intros n. induction n; intros.
+  - intros x Hx. apply H in Hx. lia.
+  - simpl in H0. destruct (implb (a n) (b n)) eqn:Heq; try discriminate.
+    apply IHn in H0. destruct (a n) eqn:Heqa.
+    * apply (implb_true_iff true) in Heq; auto.
+      crush. bdestruct (x =? n). subst; auto. intuition.
+    * crush. apply H0. intuition. subst. unfold plift in H1.
+      rewrite H1 in Heqa. intuition.
+    * intros x Hx. apply andb_true_iff in Hx as [Hx1 Hx2].
+      apply H in Hx1. apply negb_true_iff in Hx2. apply Nat.eqb_neq in Hx2.
+      lia.
+Qed.
+
+Lemma qs_cong: forall G p q1a q1b q2a q2b,
+  qstp G p q1a q1b -> qstp G p q2a q2b -> qstp G p (qor q1a q2a) (qor q1b q2b).
+Proof.
+  intros. generalize dependent q2a. generalize dependent q2b. induction H; intros.
+  - generalize dependent q1. generalize dependent q2. induction H2; intros.
+    * apply qs_sub; crush.
+    * apply qs_trans with (q2 := qor q2 q1). apply qs_sub; crush.
+      eapply qs_trans. eapply qs_var; eauto; crush. apply qs_sub; crush.
+    * eapply qs_trans. eapply IHqstp1; eauto. crush. apply IHqstp2; auto.
+  - generalize dependent q1. generalize dependent x. generalize dependent Tx. generalize dependent qx.
+    induction H4; intros.
+    * apply qs_trans with (q2 := qor q0 q2). apply qs_sub; crush.
+      eapply qs_trans. eapply qs_var; eauto; crush. apply qs_sub; crush.
+    * bdestruct (x =? x0); subst. rewrite H1 in H6. inversion H6; subst.
+      eapply qs_trans. eapply qs_var; eauto; crush. apply qs_sub; crush.
+      eapply qs_trans. eapply qs_var with (x := x0); eauto; crush. clear H4.
+      eapply qs_trans. eapply qs_var with (x := x); eauto.
+      apply orb_true_iff. left. unfold qdiff, qor, qone. apply Nat.eqb_neq in H9.
+      rewrite H9. rewrite H. destruct (q0 x); auto. crush.
+      apply qs_sub; crush.
+    * eapply qs_trans. eapply IHqstp1; eauto. apply qstp_closed in H4_ as H4c.
+      apply qs_trans with (q2 := qor (qor q0 qx) q2). apply qs_sub; crush.
+      eapply qs_trans. eapply IHqstp2; eauto; crush. apply qstp_closed in H4_0 as H4_0c.
+      apply qs_sub; crush.
+  - eapply qs_trans. eapply IHqstp1; eauto. apply IHqstp2.
+    apply qstp_closed in H1 as H1c.
+    apply qs_sub; crush.
+Qed.
+
+Lemma qstp_filter_widening: forall Γ p1 p2 q1 q2,
+  qstp Γ p1 q1 q2 -> psub (plift p1) (plift p2) -> qstp Γ p2 q1 q2.
+Proof.
+  intros. generalize dependent p2. induction H; intros.
+  - apply qs_sub; auto.
+  - eapply qs_var; eauto. crush.
+  - eapply qs_trans; eauto.
+Qed.
+
+Definition get_qstp (G: tenv) (q1 q2: ql): (ql (* filter *) * ql (* q1' *)) :=
+  (fix recur (G': tenv) (q1': ql): (ql * ql) :=
+    match G' with
+    | (T, fr, q) :: G'' =>
+        let x := length G'' in
+        match q1' x, q2 x, fr with
+        | true, false, false =>
+            let '(p, q1'') := recur G'' (qor (qdiff q1' (qone x)) q) in
+            (qor p q, q1'')
+        | _, _, _ => recur G'' q1'
+        end
+    | nil => (q1', q1')
+    end
+  ) G q1.
+
+Lemma get_qstp_is_sound: forall Γ q1 q2 p q1',
+  get_qstp Γ q1 q2 = (p, q1') -> telescope Γ -> closed_ql (length Γ) q1 ->
+  qstp Γ p q1 q1' /\ psub (plift q1') (plift p) /\ closed_ql (length Γ) p.
+Proof.
+  intros. unfold get_qstp in H. match type of H with
+  | ?f _ _ = _ => pose f as F; replace f with F in H; auto
+  end.
+  pose Γ as Γ'. replace Γ with Γ' in H; auto.
+  assert (Hlen: length Γ' <= length Γ); auto. assert (Htl: telescope Γ'); auto.
+  assert (Hidr: forall x a, indexr x Γ' = Some a -> indexr x Γ = Some a).
+  intros; auto.
+  generalize dependent p. generalize dependent q1. generalize dependent q1'.
+  induction Γ'; intros.
+  - simpl in *. inversion H; subst. intuition.
+    apply qs_sub; crush. crush.
+  - destruct a as [[T fr] q]. apply telescope_shrink in Htl as Htl'.
+    assert (Hlen': length Γ' <= length Γ). simpl in Hlen. lia.
+    assert (Hidr': forall x a, indexr x Γ' = Some a -> indexr x Γ = Some a).
+    { intros ? ? Hsome. apply Hidr. rewrite indexr_skip. auto.
+      apply indexr_var_some' in Hsome. lia. }
+    simpl in H. remember (length Γ') as x0.
+    destruct (q1 x0) eqn:Hq1x. destruct (q2 x0) eqn:Hq2x. 2: destruct fr.
+    * apply IHΓ' in H; auto.
+    * apply IHΓ' in H; auto.
+    * 
+      destruct (F Γ' (qor (qdiff q1 (qone x0)) q)) as [p0 q1''] eqn:H'.
+      inversion H; subst.
+      assert (Hcq: closed_ql (length Γ) q). {
+        specialize (Htl (length Γ') T false q indexr_head) as [_ Htl].
+        eapply closedq_extend; eauto.
+      }
+      apply IHΓ' in H'; auto. intuition.
+      eapply qs_trans. eapply qs_var. 3: { apply Hidr. apply indexr_head. } all: auto.
+      crush. eapply qstp_filter_widening; eauto. crush. crush. crush. crush.
+    * apply IHΓ' in H; auto.
+Qed.
+
+Definition check_qstp (G: tenv) (q1 q2: ql): option ql (* filter *) :=
+  let '(p, q1') := get_qstp G q1 q2 in
+  if check_subset (length G) q1' q2 then Some (qor p q2) else None.
+
+Lemma check_qstp_is_sound: forall Γ p q1 q2,
+  check_qstp Γ q1 q2 = Some p -> telescope Γ -> closed_ql (length Γ) q1 -> closed_ql (length Γ) q2 ->
+  qstp Γ p q1 q2 /\ psub (plift q2) (plift p) /\ closed_ql (length Γ) p.
+Proof.
+  intros. unfold check_qstp in H. crush_match H.
+  apply get_qstp_is_sound in Heqm as (? & ? & ?); auto.
+  apply check_subset_is_sound in Heqm0; auto. intuition.
+  eapply qs_trans. eapply qstp_filter_widening; eauto. crush.
+  apply qs_sub; crush. crush. crush. crush.
+Qed.
+
+Fixpoint upcast (Γ: tenv) (St T T': ty) : option (ql (* filter *) * bool (* grow? *) * ql (* growth *)) :=
+  match St, T, T' with
+  | _, TBool, TBool => Some (qempty, false, qempty)
+  | TRef s, TRef a, TRef b =>
+      match upcast Γ s a b, upcast Γ s b a with
+      | Some (p1, false, _), Some (p2, false, _) =>
+          Some (qor p1 p2, false, qempty)
+      | _, _ => None
+      end
+  | TFun T1s _      _      _   T2s _      _      _      _,
+    TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a,
+    TFun T1b q1fn_b q1fr_b q1b T2b q2fn_b q2ar_b q2fr_b q2b =>
+      if negb (implb q1fn_b q1fn_a && implb q1fr_b q1fr_a &&
+               implb q2fn_a q2fn_b && implb q2fr_a q2fr_b)
+      then None else
+      let* (p1, grf1, gth1) := upcast Γ T1s T1b T1a in
+      let q1a' := qor q1b gth1 in
+      let* p1' :=
+          if q1fn_a && q1fr_a then Some qempty
+          else check_qstp Γ q1a' q1a in
+      let* (p2, grf2, gth2) := upcast Γ T2s T2a T2b in
+      let* q2a' :=
+          let q2a' := qor (qor q2a gth2) (qif (q2ar_a && grf1) q1a') in
+          if implb q2ar_a q2ar_b then
+            Some q2a'
+          else if negb q1fr_b && implb q1fn_b q2fn_b then
+            Some (qor q2a' q1b)
+          else None in
+      match check_qstp Γ q2a' q2b with
+      | Some p2' => Some (qor (qor p1 p1') (qor p2 p2'), false, qempty)
+      | None =>
+          if q2fn_b && implb q1fn_b q1fr_b then
+            Some (qor (qor p1 p1') (qor p2 q2a'), true, q2a')
+          else None
+      end
+  | _, _, _ => None
+  end.
+
+Lemma stp_filter_widening: forall Γ p1 p2 grf T1 fr1 q1 T2 fr2 q2,
+  stp Γ p1 grf T1 fr1 q1 T2 fr2 q2 -> psub (plift p1) (plift p2) ->
+  stp Γ p2 grf T1 fr1 q1 T2 fr2 q2.
+Proof.
+  intros. generalize dependent p2. induction H; intros.
+  - apply s_bool; auto. eapply qstp_filter_widening; eauto.
+  - apply s_ref; auto. eapply qstp_filter_widening; eauto.
+  - eapply s_fun; auto. eapply qstp_filter_widening; eauto.
+    intuition. eapply qstp_filter_widening; eauto.
+  - eapply s_fun_fn1fr1; auto. eapply qstp_filter_widening; eauto.
+  - eapply s_fun_ar2; auto. all: eapply qstp_filter_widening; eauto.
+  - eapply s_fun_fn2; auto. all: eapply qstp_filter_widening; eauto.
+  - eapply s_trans; auto.
+Qed.
+
+Lemma upcast_is_sound: forall Γ St T1 T2 p grf gth fr q,
+  telescope Γ ->
+  closed_ty (length Γ) T1 ->
+  closed_ty (length Γ) T2 ->
+  closed_ql (length Γ) q ->
+  St = T1 \/ St = T2 ->
+  upcast Γ St T1 T2 = Some (p, grf, gth) ->
+  (grf = false -> gth = qempty) /\
+  stp Γ p grf T1 fr q T2 fr (qor q gth) /\
+  psub (plift gth) (plift p) /\
+  closed_ql (length Γ) p.
+Proof.
+  intros Γ St. revert Γ. induction St; do 8 intro; intros Htl Hct1 Hct2 Hcq Heqt Hu.
+  - simpl in Hu. crush_match Hu. qsimpl. repeat split.
+    constructor. apply qs_sub; crush. intro; auto. crush. crush.
+  - simpl in Hu. crush_match Hu. destruct Heqt as [Heqt | Heqt]; inversion Heqt. qsimpl.
+    inversion Hct1; subst. inversion Hct2; subst.
+    apply (IHSt _ _ _ _ _ _ false qempty) in Heqm1, Heqm5; auto.
+    destruct Heqm1 as [Hu1a [Hu1b [Hu1c Hu1d]]].
+    destruct Heqm5 as [Hu2a [Hu2b [Hu2c Hu2d]]].
+    specialize (Hu1a eq_refl). specialize (Hu2a eq_refl). subst.
+    rewrite qor_empty in Hu1b, Hu2b. repeat split.
+    * constructor. apply qs_sub; crush. intro; auto. auto. auto.
+      eapply stp_filter_widening. eauto. crush.
+      eapply stp_filter_widening. eauto. crush.
+    * crush.
+    * crush.
+    * crush.
+    * destruct Heqt as [Heqt | Heqt]; inversion Heqt; intuition.
+    * crush.
+    * destruct Heqt as [Heqt | Heqt]; inversion Heqt; intuition.
+  - simpl in Hu. do 2 crush_match' Hu.
+    destruct Heqt as [Heqt | Heqt]; inversion Heqt.
+    inversion Hct1; subst. inversion Hct2; subst.
+    do 9 crush_match' Hu. clear Heqm1 Heqm2 Heqm5 Heqm6 p0 p1 p2 p3.
+    rename t1 into T1a, b4 into q1fn_a, b5 into q1fr_a, q2 into q1a.
+    rename t2 into T2a, b6 into q2fn_a, b7 into q2ar_a, b8 into q2fr_a, q3 into q2a.
+    rename t3 into T1b, b9 into q1fn_b, b10 into q1fr_b, q4 into q1b.
+    rename t4 into T2b, b11 into q2fn_b, b12 into q2ar_b, b13 into q2fr_b, q5 into q2b.
+    rename q7 into p1, b14 into grf1, q6 into gth1, q8 into p1'.
+    rename q10 into p2, b15 into grf2, q9 into gth2, b16 into q2a'.
+    apply negb_false_iff in Heqm.
+    apply andb_true_iff in Heqm as [Heqm Hb2fr].
+    apply andb_true_iff in Heqm as [Heqm Hb2fn].
+    apply andb_true_iff in Heqm as [Hb1fn Hb1fr].
+    split. do 2 crush_match' Hu. auto. crush_match' Hu. intuition.
+    apply IHSt1 with (fr := q1fn_b || q1fr_b) (q := q1b) in Heqm0 as Hu1; auto.
+    eapply IHSt2 with (fr := q2fn_a || q2ar_a || q2fr_a) (q := q2a) in Heqm4 as Hu2; auto.
+    destruct Hu1 as [Hu1a [Hu1b [Hu1c Hu1d]]]. destruct Hu2 as [Hu2a [Hu2b [Hu2c Hu2d]]].
+    2,3: destruct Heqt as [H' | H']; inversion H'; auto.
+    clear IHSt1 IHSt2 Hct1 Hct2 Heqt Heqm0 Heqm4.
+    remember (qor q1b gth1) as q1a'.
+    assert (closed_ql (length Γ) q1a'). rewrite Heqq1a'. crush.
+    assert (Hst1: closed_ql (length Γ) p1' /\ stp Γ p1' grf
+        (TFun T1a q1fn_a q1fr_a q1a  T2a q2fn_a q2ar_a q2fr_a q2a) fr q1
+        (TFun T1a q1fn_b q1fr_b q1a' T2a q2fn_a q2ar_a q2fr_a q2a) fr q1). {
+      crush_match Heqm3.
+      * split. crush. apply andb_true_iff in Heqm. destruct Heqm; subst.
+        apply s_fun_fn1fr1; auto. crush. intro; auto. apply qs_sub; crush.
+      * apply check_qstp_is_sound in Heqm3 as [Hq1 [Hq2 Hq3]]; auto. split; auto.
+        eapply s_fun. apply stp_qs with (gr := false); auto.
+        unfold bsub; apply implb_true_iff. rewrite implb_orb_distrib_l.
+        repeat rewrite implb_orb_distrib_r. rewrite Hb1fn. rewrite Hb1fr. simpl.
+        apply orb_true_r. apply s_refl; auto. 1-2: unfold bsub; apply implb_true_iff; auto.
+        1-4: intro; auto. apply qs_sub; crush. intuition.
+    }
+    clear Heqm3. destruct Hst1 as [? Hst1].
+    remember (qor (qor q2a gth2) (qif (q2ar_a && grf1) q1a')) as q2a'0.
+    assert (closed_ql (length Γ) q2a'0).
+    { rewrite Heqq2a'0. destruct (q2ar_a && grf1); crush. }
+    assert (Hst2: stp Γ (qor p1 p2) grf
+        (TFun T1a q1fn_b q1fr_b q1a' T2a q2fn_a q2ar_a q2fr_a q2a  ) fr q1
+        (TFun T1b q1fn_b q1fr_b q1b  T2b q2fn_a q2ar_a q2fr_a q2a'0) fr q1). {
+      eapply s_fun. eapply stp_filter_widening. eauto. crush.
+      eapply s_trans. eapply stp_filter_widening. eauto. crush.
+      apply stp_qs. auto. apply qs_sub; auto. rewrite Heqq2a'0; crush. crush.
+      1-7: intro; auto. apply qs_sub; crush. intros; subst. apply qs_sub; crush.
+    }
+    clear Hu1b Hu2b.
+    assert (Hst3: closed_ql (length Γ) q2a' /\ stp Γ qempty grf
+        (TFun T1b q1fn_b q1fr_b q1b T2b q2fn_a q2ar_a q2fr_a q2a'0) fr q1
+        (TFun T1b q1fn_b q1fr_b q1b T2b q2fn_b q2ar_b q2fr_b q2a' ) fr q1). {
+      crush_match Heqm7.
+      * split; auto. eapply s_fun. apply s_refl with (grf := false); auto.
+        apply stp_qs; auto. apply qs_sub; auto. crush. unfold bsub; apply implb_true_iff.
+        repeat rewrite implb_orb_distrib_l. repeat rewrite implb_orb_distrib_r.
+        rewrite Hb2fn. rewrite Hb2fr. rewrite Heqm. repeat rewrite orb_true_r. auto.
+        1,2,6: intro; auto. 1-3: unfold bsub; apply implb_true_iff; auto.
+        apply qs_sub; crush. intuition.
+      * split. crush. apply implb_false_iff in Heqm as [? ?].
+        apply andb_true_iff in Heqm0 as [Heqm Heqm0].
+        apply negb_true_iff in Heqm. subst. apply s_fun_ar2; auto.
+        1,2: unfold bsub; apply implb_true_iff. rewrite implb_orb_distrib_l.
+        apply andb_true_iff. split; auto. auto. apply qs_sub; crush.
+        intro; auto. apply qs_sub; crush.
+    }
+    clear Heqm7. destruct Hst3 as [? Hst3].
+    assert (Hst123: stp Γ (qor p1' (qor p1 p2)) grf
+        (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) fr q1
+        (TFun T1b q1fn_b q1fr_b q1b T2b q2fn_b q2ar_b q2fr_b q2a') fr q1). {
+      eapply s_trans. eapply stp_filter_widening. eauto. crush.
+      eapply s_trans. eapply stp_filter_widening. eauto. crush.
+      eapply stp_filter_widening. eauto. crush.
+    }
+    clear Hst1 Hst2 Hst3. crush_match Hu.
+    * apply check_qstp_is_sound in Heqm as [Hq1 [Hq2 Hq3]]; auto. repeat split.
+      qsimpl. eapply s_trans. eapply stp_filter_widening. eauto. crush.
+      eapply s_fun. apply s_refl with (grf := false); auto.
+      apply stp_qs; auto. eapply qstp_filter_widening. eauto. crush.
+      1-7: intro; auto. apply qs_sub; crush. intuition. crush. crush.
+    * apply andb_true_iff in Heqm0 as [? Heqm0]. subst. repeat split.
+      eapply s_trans. eapply stp_filter_widening. eauto. crush.
+      apply s_fun_fn2; auto. unfold bsub; apply implb_true_iff; auto.
+      1,2,4: intro; auto. apply qs_sub; crush. apply qs_sub; crush.
+      crush. crush.
+Unshelve.
+  all: apply true.
+Qed.
+
+Example upcast_with_pair: upcast [(TRef TBool, true, qempty); (TRef TBool, true, qempty)]
+  (TPair_trans (TRef TBool) (qone 0) (qone 1))
+  (TPair_trans (TRef TBool) (qone 0) (qone 1))
+  (TPair_opaque (TRef TBool)) = Some (qor (qone 1) (qone 0), true, qor (qone 1) (qone 0)).
+Proof.
+  simpl. qsimpl. f_equal. f_equal. f_equal. crush.
+Qed.
+
+Fixpoint avoidance (T: ty) (a: nat) (positive growable: bool)
+    : option (bool (* invariant *) * ty (* T' *) * ql (* filter *) * bool (* grf *) * ql (* gth *)) :=
+  match T, positive with
+  | TBool, _ => Some (true, T, qempty, false, qempty)
+  | TRef T', _ =>
+      match avoidance T' a true true with
+      | Some (true, _, _, _, _) => Some (true, T, qempty, false, qempty)
+      | _ => None
+      end
+  | TFun T1 q1fn q1fr q1 T2 q2fn q2ar q2fr q2, true =>
+      let* (inv1, T1', p1, gr1, gth1) := avoidance T1 a false (q1fn && q1fr) in
+      let* (inv2, T2', p2, gr2, gth2) := avoidance T2 a true true in
+      let gth1' := qif (gr1 && q2ar) (qor q1 gth1) in
+      let grf := q2 a || gr1 && q2ar || gr2 in
+      let gth := qor gth1' (qor gth2 (qand q2 (qone a))) in
+      Some (
+        inv1 && negb (q1 a) && inv2 && negb grf,
+        TFun T1' (q1fn && implb grf q1fr) q1fr (qdiff q1 (qone a))
+             T2' (q2fn || grf)  q2ar      q2fr (qdiff q2 (qone a)),
+        qor (qor p1 p2) gth, grf, gth
+      )
+  | TFun T1 q1fn q1fr q1 T2 q2fn q2ar q2fr q2, false =>
+      let* (inv1, T1', p1, gr1, gth1) := avoidance T1 a true true in
+      let gable2 := growable && q2fn && implb q1fn q1fr in
+      let* (inv2, T2', p2, gr2, gth2) := avoidance T2 a false gable2 in
+      let gr1' := gr1 || q1 a in
+      let q2ar' := if gr1' then gable2 && (q2ar || negb q1fr) else q2ar in
+      let gth1' := qif (gr1' && q2ar') (qor q1 gth1) in
+      let grf := gr1' && q2ar' || gr2 in
+      let gth := qor gth1' gth2 in
+      Some (
+        inv1 && negb gr1' && inv2 && negb (gr2 || q2 a),
+        TFun T1' (q1fn || gr1') (q1fr || gr1') (qdiff q1 (qone a))
+             T2'  q2fn    q2ar'  q2fr          (qdiff q2 (qone a)),
+        qor (qor p1 p2) gth, grf, gth
+      )
+  end.
+
+Definition TPair_opaque_half T a :=
+  TFun_opaque_outer (TFun_trans_inner T a (TFun_opaque_inner T T)) T.
+
+Example avoidance_with_pair_b:
+  avoidance (TPair_trans (TRef TBool) (qone 0) (qone 1)) 1 true true =
+  Some (false, TPair_opaque_half (TRef TBool) (qone 0), qone 1, true, qone 1).
+Proof.
+  simpl. qsimpl. f_equal. f_equal. f_equal. f_equal. f_equal.
+  replace (qdiff (qone 0) (qone 1)) with (qone 0).
+  replace (qdiff (qone 1) (qone 1)) with qempty.
+  replace (qdiff qempty (qone 1)) with qempty. reflexivity.
+  all: apply functional_extensionality; intros; unfold qempty, qdiff, qone, qor.
+  auto. all: bdestruct (x =? 1); auto; simpl. subst. auto. symmetry. apply andb_true_r.
+Qed.
+
+Example avoidance_with_pair_a:
+  avoidance (TPair_opaque_half (TRef TBool) (qone 0)) 0 true true =
+  Some (false, TPair_opaque (TRef TBool), qone 0, true, qone 0).
+Proof.
+  simpl. qsimpl. f_equal. f_equal. f_equal. f_equal. f_equal.
+  replace (qdiff (qone 0) (qone 0)) with qempty.
+  replace (qdiff qempty (qone 0)) with qempty. reflexivity.
+  all: apply functional_extensionality; intros; unfold qempty, qdiff, qone, qor.
+  auto. all: bdestruct (x =? 0); auto.
+Qed.
+
+Lemma avoidance_is_sound: forall T t G positive growable inv T' p grf gth fr q,
+  closed_ty (length (t::G)) T -> closed_ql (length (t::G)) q ->
+  bsub positive growable ->
+  avoidance T (length G) positive growable = Some (inv, T', p, grf, gth) ->
+  (inv = true -> T = T' /\ grf = false) /\
+  bsub grf growable /\ (grf = false -> gth = qempty) /\
+  closed_ty (length G) T' /\ closed_ql (length (t::G)) p /\
+  psub (plift gth) (plift p) /\
+  if positive then
+    stp (t::G) p grf T  fr q T' fr (qor q gth)
+  else
+    stp (t::G) p grf T' fr q T  fr (qor q gth).
+Proof.
+  intro T. induction T; intros ? ? ? ? ? ? ? ? ? ? ? Hct Hcq Hpg Hav.
+  3: destruct positive.
+  - simpl in Hav. inversion Hav; subst. unfold bsub; intuition.
+    closed. crush. crush. qsimpl. destruct positive; apply s_refl; auto.
+  - simpl in Hav. crush_match Hav. unfold bsub; intuition.
+    inversion Hct; subst. eapply IHT in Heqm; eauto. intuition; subst. closed.
+    intro; auto. crush. crush. qsimpl. destruct positive; apply s_refl; auto.
+  - simpl in Hav. crush_match Hav.
+    rename b7 into inv2, t1 into T2', q5 into p2, b6 into grf2, q4 into gth2.
+    rename b5 into inv1, t0 into T1', q3 into p1, b4 into grf1, q2 into gth1.
+    rename b into q1fn, b0 into q1fr, q into q1, q1 into q.
+    rename b1 into q2fn, b2 into q2ar, b3 into q2fr, q0 into q2.
+    inversion Hct; subst. eapply IHT1 in Heqm; auto. eapply IHT2 in Heqm4; auto.
+    3,5: intro; intuition. 2,3: instantiate (2 := t). clear IHT1 IHT2.
+    destruct Heqm as (? & ? & ? & ? & ? & ? & ?).
+    destruct Heqm4 as (? & ? & ? & ? & ? & ? & ?).
+    split. 2: repeat split.
+    * intros. repeat apply andb_true_iff in H17 as [H17 ?]. clear H16 H6.
+      apply negb_true_iff in H18, H20. rewrite H18.
+      rewrite orb_false_r. simpl. rewrite andb_true_r.
+      repeat apply orb_false_iff in H18 as [H18 ?]. intuition. subst. f_equal.
+      all: apply functional_extensionality; intros; unfold qdiff, qone.
+      all: destruct (x =? length G) eqn:?; simpl.
+      all: try (symmetry; apply andb_true_r); apply Nat.eqb_eq in Heqb; subst.
+      rewrite H20; auto. rewrite H18; auto.
+    * intro. apply Hpg. auto.
+    * intros. repeat apply orb_false_iff in H17 as [H17 ?]. rewrite H19.
+      clear H16 H6. qsimpl. subst. intuition. subst. qsimpl.
+      apply functional_extensionality; intros. unfold qand, qempty, qone; simpl.
+      destruct (x =? length G) eqn:?. apply Nat.eqb_eq in Heqb. subst. rewrite H17. auto.
+      apply andb_false_r.
+    * closed. crush. apply H11 in H18. simpl in H18. lia.
+      crush. apply H12 in H18. simpl in H18. lia.
+    * destruct (grf1 && q2ar) eqn:?; crush.
+    * destruct (grf1 && q2ar) eqn:?; crush.
+    * eapply s_trans. {
+        destruct grf1. specialize (H0 eq_refl). apply andb_true_iff in H0.
+        intuition; subst. eapply s_fun_fn1fr1; auto.
+        instantiate (1 := qor q1 gth1). crush. intro Q; apply Q.
+        apply qs_sub. intros ? Q; apply Q. crush. crush.
+        specialize (H1 eq_refl). subst. qsimpl. eapply s_refl. closed. crush.
+      }
+      eapply s_trans. {
+        eapply s_fun. eapply stp_filter_widening. eapply s_trans. 2: eauto.
+        apply stp_qs. closed. apply qs_sub. instantiate (1 := qdiff q1 (qone (length G))).
+        crush. crush. crush. intro Q. apply orb_true_iff. apply orb_true_iff in Q as [Q | Q].
+        left. apply andb_true_iff in Q as [Q _]; eauto. right; eauto. crush.
+        eapply stp_filter_widening. eapply s_trans. eauto. apply stp_qs. closed.
+        apply qs_sub. instantiate (1 := qor (qor q2 gth2) (qif (grf1 && q2ar) (qor q1 gth1))).
+        crush. crush. destruct (grf1 && q2ar); crush. intro Q; apply Q. crush.
+        intro Q. apply andb_true_iff in Q as [Q _]; auto.
+        1-5: intro Q; apply Q. apply qs_sub. intros ? Q; apply Q. crush. crush.
+        intros. subst. qsimpl. apply qs_sub; crush.
+      } {
+        destruct (q2 (length G) || grf1 && q2ar || grf2) eqn:?. rewrite <- Heqb at 2.
+        rewrite orb_true_r. apply s_fun_fn2. closed. closed. crush. crush. rewrite Heqb.
+        simpl. intro Q. apply andb_true_iff in Q as [_ Q]; auto. 1,2,4: intro; auto.
+        apply qs_sub. crush. bdestruct (x =? length G); intuition.
+        destruct (grf1 && q2ar); crush. destruct (grf1 && q2ar); crush.
+        apply qs_sub. crush. crush. destruct (grf1 && q2ar); crush.
+        rewrite Heqb. repeat apply orb_false_iff in Heqb as [Heqb ?]. subst. rewrite H18.
+        intuition. subst. qsimpl. simpl. rewrite orb_false_r. replace (qdiff q2 (qone (length G))) with q2.
+        apply stp_qs. closed. crush. apply qs_sub; crush. intro; auto.
+        apply functional_extensionality; intros. unfold qdiff, qone.
+        destruct (x =? length G) eqn:?. apply Nat.eqb_eq in Heqb0. subst. rewrite Heqb. auto.
+        simpl. symmetry. apply andb_true_r.
+      }
+    * crush.
+    * crush.
+  - simpl in Hav. crush_match Hav.
+    rename b5 into inv1, t0 into T1', q3 into p1, b4 into gr1, q2 into gth1.
+    rename b7 into inv2, t1 into T2', q5 into p2, b6 into gr2, q4 into gth2.
+    rename b into q1fn, b0 into q1fr, q into q1, q1 into q.
+    rename b1 into q2fn, b2 into q2ar, b3 into q2fr, q0 into q2.
+    inversion Hct; subst. remember (gr1 || q1 (length G)) as gr1'.
+    remember (growable && q2fn && implb q1fn q1fr) as gable2.
+    remember (if gr1' then gable2 && (q2ar || negb q1fr) else q2ar) as q2ar'.
+    eapply IHT1 in Heqm; auto. eapply IHT2 in Heqm4; auto.
+    3,5: intro; intuition. 2,3: instantiate (2 := t). clear IHT1 IHT2.
+    destruct Heqm as (? & ? & ? & ? & ? & ? & ?). destruct Heqm4 as (? & ? & ? & ? & ? & ? & ?).
+    split. 2: repeat split.
+    * intros. repeat apply andb_true_iff in H17 as [H17 ?]. apply negb_true_iff in H20, H18.
+      apply orb_false_iff in H18 as [? ?]. clear H16 H6. subst. apply orb_false_iff in H20 as [? ?].
+      subst. simpl. rewrite H16. simpl. intuition; subst. repeat rewrite orb_false_r.
+      f_equal. all: apply functional_extensionality; intros; unfold qdiff, qone.
+      all: destruct (x =? length G) eqn:?; simpl; try (symmetry; apply andb_true_r).
+      all: apply Nat.eqb_eq in Heqb; subst. rewrite H16. auto. rewrite H21. auto.
+    * intro Q. apply orb_true_iff in Q as [Q | Q]. apply andb_true_iff in Q as [Q1 Q2].
+      rewrite Q1 in Heqq2ar'. rewrite Heqq2ar' in Q2. apply andb_true_iff in Q2 as [Q _].
+      subst gable2. repeat apply andb_true_iff in Q as [Q _]. auto.
+      apply H8 in Q. subst gable2. repeat apply andb_true_iff in Q as [Q _]. auto.
+    * intros. apply orb_false_iff in H17 as [Q1 Q2]. rewrite Q1. qsimpl. auto.
+    * closed. crush. apply H11 in H18. simpl in H18. lia.
+      crush. apply H12 in H18. simpl in H18. lia.
+    * destruct (gr1' && q2ar') eqn:?; crush.
+    * destruct (gr1' && q2ar') eqn:?; crush.
+    * eapply s_trans. {
+        destruct gr1'. repeat rewrite orb_true_r.
+        eapply s_fun_fn1fr1; auto. closed. closed. crush.
+        instantiate (1 := qor q1 gth1). crush. crush. intro Q; apply Q.
+        apply qs_sub. intros ? Q; apply Q. crush. crush. repeat rewrite orb_false_r.
+        symmetry in Heqgr1'. apply orb_false_iff in Heqgr1' as [Hg1 Hg2].
+        apply H1 in Hg1. subst gth1. qsimpl. eapply s_fun.
+        eapply stp_qs with (gr := false). closed. apply qs_sub; crush. subst x.
+        rewrite H17 in Hg2. discriminate.
+        intro; eauto. apply s_refl. closed. crush. 1-6: intro; auto.
+        apply qs_sub; crush. intuition.
+      }
+      eapply s_trans. {
+        eapply s_fun. eapply stp_filter_widening. eauto. crush.
+        eapply stp_filter_widening. eapply s_trans. eapply stp_qs. closed.
+        apply qs_sub. instantiate (1 := qor q2 (qif (gr1' && q2ar') (qor q1 gth1))).
+        crush. crush. destruct (gr1' && q2ar'); crush. intro Q; apply Q.
+        eauto. crush. 1-6: intro Q; apply Q.
+        apply qs_sub. intros ? Q; apply Q. crush. crush.
+        intros. subst gr1 q2ar'. rewrite H18. simpl in Heqgr1'. subst gr1'. qsimpl.
+        apply qs_sub; crush.
+      }
+      eapply s_trans. {
+        instantiate (3 := TFun T1 q1fn q1fr q1 T2 q2fn q2ar q2fr
+          (qor (qor q2 (qif (gr1' && q2ar') (qor q1 gth1))) gth2)).
+        destruct gr1'; simpl. destruct q2ar'; simpl; qsimpl.
+        symmetry in Heqq2ar'. apply andb_true_iff in Heqq2ar' as [Heq1 Heq2].
+        apply orb_true_iff in Heq2 as [Heq2 | Heq2]. subst q2ar. apply s_refl.
+        closed. crush. crush. destruct q2ar. apply s_refl. closed. crush. crush.
+        apply negb_true_iff in Heq2. subst q1fr. rewrite Heq1 in Heqgable2.
+        symmetry in Heqgable2. repeat apply andb_true_iff in Heqgable2 as [Heqgable2 ?].
+        subst q2fn growable. eapply s_fun_ar2; auto. 1,2,4: intro; auto.
+        apply qs_sub; crush. apply qs_sub; crush.
+        eapply s_fun; auto. apply s_refl. closed. crush. apply stp_qs; auto.
+        apply qs_sub; crush. intro Q.
+        repeat apply orb_true_iff in Q as [Q | Q]; inversion Q; auto.
+        apply orb_true_r. 1-6: intro; intuition. apply qs_sub; crush. intuition.
+        rewrite Heqq2ar'. qsimpl. apply s_refl. closed. crush. crush.
+      } {
+        destruct (gr1' && q2ar' || gr2) eqn:?. assert (gable2 = true).
+        { apply orb_true_iff in Heqb as [Heqb | Heqb]. apply andb_true_iff in Heqb as [Heqb1 Heqb2].
+          rewrite Heqb1, Heqb2 in *. symmetry in Heqq2ar'. apply andb_true_iff in Heqq2ar'. intuition.
+          apply H8. auto. }
+        rewrite H17 in Heqgable2. symmetry in Heqgable2. repeat apply andb_true_iff in Heqgable2 as [Heqgable2 ?].
+        subst q2fn. eapply s_fun_fn2; auto. unfold bsub; apply implb_true_iff; auto.
+        1,2,4: intro; auto. apply qs_sub. crush. destruct (gr1' && q2ar'); crush.
+        destruct (gr1' && q2ar'); crush. apply qs_sub; try solve [crush].
+        destruct (gr1' && q2ar'); crush. apply orb_false_iff in Heqb as [Heqb1 Heqb2].
+        rewrite Heqb1, (H9 Heqb2). qsimpl. apply s_refl. closed. crush.
+      }
+    * destruct (gr1' && q2ar'); crush.
+    * crush.
+Unshelve.
+  all: apply true.
+Qed.
+
+Inductive typeact: Type :=
+| TInfer: typeact
+| TInferF: ty -> bool -> ql -> typeact
+| TCheck: ty -> typeact -> typeact
+| TCheckQ: bool -> ql -> typeact -> typeact.
+
+Fixpoint bidirectional (Γ: tenv) (e: tm) := fix recur (ta: typeact) : option (ql * ty * bool * ql) :=
+  let tcheckqual Γ e T fr q := bidirectional Γ e (TCheckQ fr q (TCheck T TInfer)) in
+  let tcheck Γ e T := bidirectional Γ e (TCheck T TInfer) in
+  let tinfer Γ e := bidirectional Γ e TInfer in
+  let tinferf Γ e Tx frx qx := bidirectional Γ e (TInferF Tx frx qx) in
+  match ta with
+  | TInferF T1 fr1 q1 =>
+      match e with
+      | tabs e' =>
+          let Γ' := (T1, fr1, q1)::Γ in
+          let* (p, T2, fr2, q2a) := tinfer Γ' e' in
+          let* (inv, T2, p', grf, gth) := avoidance T2 (length Γ) true true in
+          let '(q2b, x, p2) := (qor q2a gth, length Γ, qor p p') in
+          let '(q2x, q2c, qf) := (q2b x, qdiff q2b (qone x), qdiff p2 (qone x)) in
+          Some (qor qf q1, TFun T1 false fr1 q1 T2 false q2x fr2 q2c, false, qf)
+      | _ => None
+      end
+  | TInfer =>
+      match e with
+      | ttrue | tfalse =>
+          Some (qempty, TBool, false, qempty)
+      | tvar x =>
+          let* (T, fr, q) := indexr x Γ in
+          Some (qone x, T, false, (qone x))
+      | tref e =>
+          match tinfer Γ e with
+          | Some (p, TBool, fr, q) => Some (p, TRef TBool, true, q)
+          | _ => None
+          end
+      | tget e =>
+          match tinfer Γ e with
+          | Some (p, TRef TBool, fr, q) => Some (p, TBool, false, qempty)
+          | _ => None
+          end
+      | tput e1 e2 =>
+          match tinfer Γ e1, tinfer Γ e2 with
+          | Some (p1, TRef TBool, fr1, q1), Some (p2, TBool, fr2, q2) =>
+              Some (qor p1 p2, TBool, false, qempty)
+          | _, _ => None
+          end
+      | tapp (tabs e1' as e1) e2 =>
+          let* (px, Tx, frx, qx) := tinfer Γ e2 in
+          match tinferf Γ e1 Tx frx qx with
+          | Some (pf, TFun _ _ _ _ T2 q2f q2x q2r q2, frf, qf) =>
+              let q2r' := q2f && frf || q2x && frx || q2r in
+              let q2' := qor (qif q2f qf) (qor (qif q2x qx) q2) in
+              Some (qor q2 (qor pf px), T2, q2r', q2')
+          | _ => None
+          end
+      | tapp e1 e2 =>
+          match tinfer Γ e1 with
+          | Some (p, TFun T1 q1fn q1fr q1 T2 q2fn q2ar q2fr q2, frf, qf) =>
+              let* (p1, _, q1fr', q1') :=
+                  match q1fn, q1fr, tcheck Γ e2 T1 with
+                  | true, true, res => res
+                  | true, false, Some (p1, _, false, q1') =>
+                      match check_qstp Γ q1' q1, e1 with
+                      | Some p1', _ =>
+                          Some (qor p1 p1', T1, false, q1')
+                      | None, tvar x =>
+                          let* p1' := check_qstp Γ q1' (qor (qone x) q1) in
+                          Some (qor p1 p1', T1, false, q1')
+                      | _, _ => None
+                      end
+                  | false, true, Some (p1, _, fr', q1') =>
+                      let '(p1', q1'u) := get_qstp Γ q1' q1 in
+                      let q1'' := qand (vars_trans_fix Γ (qdiff q1'u q1))
+                                       (vars_trans_fix Γ qf) in
+                      if check_subset (length Γ) q1'' qempty then
+                        Some (qor p1 p1', T1, fr', q1')
+                      else None
+                  | false, false, Some (p1, _, false, q1') =>
+                      let* p1' := check_qstp Γ q1' q1 in
+                      Some (qor p1 p1', T1, false, q1')
+                  | _, _, _ => None
+                  end in
+              let q2fr' := q2fn && frf || q2ar && q1fr' || q2fr in
+              let q2' := qor (qif q2fn qf) (qor (qif q2ar q1') q2) in
+              Some (qor q2 (qor p p1), T2, q2fr', q2')
+          | _ => None
+          end
+      | tas e T fr q =>
+          let* (p, T', fr', q') := tcheckqual Γ e T fr q in
+          Some (p, T, fr, q)  (* what to do here? *)
+      | _ => None
+      end
+  | TCheck T (TInfer as ta') =>
+      let* (p, T', fr', q') := recur ta' in
+      let* (p', grf, gth) := upcast Γ T' T' T in
+      Some (qor p p', T, fr', qor q' gth)
+  | TCheckQ fr qf (TCheck T TInfer as ta') =>
+      match e, T, fr with
+      | tabs e', TFun T1 q1fn q1fr q1 T2 q2fn q2ar q2fr q2, false =>
+          let Γ' := (T1, q1fr, qor q1 (qif q1fn qf)) :: Γ in
+          let qx := qone (length Γ) in
+          let q2ar' := negb q1fr && implb q1fn q2fn &&
+                       check_subset (length Γ) q1 (qor q2 (qif (q2fn && negb q1fn) qf)) in
+          let q2' := qor q2 (qor (qif q2fn qf) (qif (q2ar || q2ar') qx)) in
+          let* (p, _, q2fr', q2') := tcheckqual Γ' e' T2 q2fr q2' in
+          if check_subset (length Γ') p (qor qf qx) then
+            Some (qor qf q1, T, false, qf)
+          else None
+      | _, _, _ =>
+          let* (p, _, fr', q') := recur ta' in
+          if implb fr' fr then
+            let* p' := check_qstp Γ q' qf in
+            Some (qor p p', T, fr, qf)
+          else None
+      end
+  | _ => None
+  end.
+
+Definition tcheckqual Γ e T fr q := bidirectional Γ e (TCheckQ fr q (TCheck T TInfer)).
+Definition tcheck Γ e T := bidirectional Γ e (TCheck T TInfer).
+Definition tinfer Γ e := bidirectional Γ e TInfer.
+Definition tinferf Γ e Tx frx qx := bidirectional Γ e (TInferF Tx frx qx).
+
+Lemma red_tinfer_tapp: forall Γ e1 e2,
+  (exists e1', e1 = tabs e1' /\
+  tinfer Γ (tapp e1 e2) =
+    let* (px, Tx, frx, qx) := tinfer Γ e2 in
+    match tinferf Γ e1 Tx frx qx with
+    | Some (pf, TFun _ _ _ _ T2 q2f q2x q2r q2, frf, qf) =>
+        let q2r' := q2f && frf || q2x && frx || q2r in
+        let q2' := qor (qif q2f qf) (qor (qif q2x qx) q2) in
+        Some (qor q2 (qor pf px), T2, q2r', q2')
+    | _ => None
+    end) \/
+  (tinfer Γ (tapp e1 e2) =
+    match tinfer Γ e1 with
+    | Some (p, TFun T1 q1fn q1fr q1 T2 q2fn q2ar q2fr q2, frf, qf) =>
+        let* (p1, _, q1fr', q1') :=
+            match q1fn, q1fr, tcheck Γ e2 T1 with
+            | true, true, res => res
+            | true, false, Some (p1, _, false, q1') =>
+                match check_qstp Γ q1' q1, e1 with
+                | Some p1', _ =>
+                    Some (qor p1 p1', T1, false, q1')
+                | None, tvar x =>
+                    let* p1' := check_qstp Γ q1' (qor (qone x) q1) in
+                    Some (qor p1 p1', T1, false, q1')
+                | _, _ => None
+                end
+            | false, true, Some (p1, _, fr', q1') =>
+                let '(p1', q1'u) := get_qstp Γ q1' q1 in
+                let q1'' := qand (vars_trans_fix Γ (qdiff q1'u q1))
+                                  (vars_trans_fix Γ qf) in
+                if check_subset (length Γ) q1'' qempty then
+                  Some (qor p1 p1', T1, fr', q1')
+                else None
+            | false, false, Some (p1, _, false, q1') =>
+                let* p1' := check_qstp Γ q1' q1 in
+                Some (qor p1 p1', T1, false, q1')
+            | _, _, _ => None
+            end in
+        let q2fr' := q2fn && frf || q2ar && q1fr' || q2fr in
+        let q2' := qor (qif q2fn qf) (qor (qif q2ar q1') q2) in
+        Some (qor q2 (qor p p1), T2, q2fr', q2')
+    | _ => None
+    end).
+Proof.
+  intros. destruct e1; auto. left. eauto.
+Qed.
+
+Lemma red_tcheck: forall Γ e T,
+  tcheck Γ e T =
+    let* (p, T', fr', q') := tinfer Γ e in
+    let* (p', grf, gth) := upcast Γ T' T' T in
+    Some (qor p p', T, fr', qor q' gth).
+Proof.
+  intros. destruct e; auto.
+Qed.
+
+Lemma red_tcheckqual: forall Γ e T fr qf,
+  (exists e' T1 q1fn q1fr q1 T2 q2fn q2ar q2fr q2,
+  e = tabs e' /\ T = TFun T1 q1fn q1fr q1 T2 q2fn q2ar q2fr q2 /\ fr = false /\
+  tcheckqual Γ e T fr qf =
+    let Γ' := (T1, q1fr, qor q1 (qif q1fn qf)) :: Γ in
+    let qx := qone (length Γ) in
+    let q2ar' := negb q1fr && implb q1fn q2fn &&
+                 check_subset (length Γ) q1 (qor q2 (qif (q2fn && negb q1fn) qf)) in
+    let q2' := qor q2 (qor (qif q2fn qf) (qif (q2ar || q2ar') qx)) in
+    let* (p, _, q2fr', q2') := tcheckqual Γ' e' T2 q2fr q2' in
+    if check_subset (length Γ') p (qor qf qx) then
+      Some (qor qf q1, T, false, qf)
+    else None) \/
+  tcheckqual Γ e T fr qf =
+    let* (p, _, fr', q') := tcheck Γ e T in
+    if implb fr' fr then
+      let* p' := check_qstp Γ q' qf in
+      Some (qor p p', T, fr, qf)
+    else None.
+Proof.
+  intros.
+  destruct e. all: try solve [right; auto].
+  destruct T. all: try solve [right; auto].
+  destruct fr. right. auto. left. repeat eexists.
+Qed.
+
+Lemma sem_type_filter_widening: forall G e T p1 p2 fr q,
+  sem_type G e T p1 fr q -> psub p1 p2 -> sem_type G e T p2 fr q.
+Proof.
+  unfold sem_type; intros. eapply envt_tighten in H1 as H1'; eauto.
+  specialize (H _ _ _ _ H1' H2). unfold exp_type in *.
+  destruct H as [S' [M' [v [ls H]]]]. exists S'. exists M'. exists v. exists ls.
+  intuition. replace fr with (fr || false). eapply valq_sub; eauto. crush.
+  unfold env_type in H1. intuition. crush. destruct fr; auto.
+Qed.
+
+Lemma has_type_filter_widening: forall Γ e T p1 p2 fr q,
+  psub (plift p1) (plift p2) ->
+  has_type Γ e T p1 fr q -> has_type Γ e T p2 fr q.
+Proof.
+  intros. generalize dependent p2. induction H0; intros; eauto.
+  - econstructor; auto. destruct fn1; destruct fr1; intuition.
+    * left. destruct H3. intuition. exists x. intuition. eapply qstp_filter_widening; eauto.
+    * right. intuition. eapply qstp_filter_widening; eauto.
+    * destruct H. exists x. intuition. eapply qstp_filter_widening; eauto.
+    * eapply qstp_filter_widening; eauto.
+    * crush.
+  - econstructor; auto. 2-3: crush.
+    replace (qand p2 (qor q1 (qif fn1 qf))) with (qand p (qor q1 (qif fn1 qf))).
+    apply IHhas_type. crush. apply functional_extensionality. intros.
+    unfold qand, qor, qif. destruct (p x) eqn:Hpx.
+    * apply H7 in Hpx. rewrite Hpx. reflexivity.
+    * simpl. symmetry. apply andb_false_iff. right. apply orb_false_iff.
+      split. 2: destruct fn1; auto. all: apply not_true_iff_false; intro Hx.
+      all: apply not_true_iff_false in Hpx; apply Hpx. apply H. auto. apply H6. auto.
+  - eapply t_sub_stp. apply IHhas_type; auto. eapply stp_filter_widening; eauto. crush.
+  - eapply t_ascript. crush. apply IHhas_type. crush.
+Qed.
+
+Fixpoint result_match (G: tenv) (ta: typeact) (p: ql) (T: ty) (fr: bool) (q: ql) : Prop :=
+  match ta with
+  | TCheck T' ta' => T = T' /\ result_match G ta' p T fr q
+  | TCheckQ fr' q' ta' => fr = fr' /\ q = q' /\ result_match G ta' p T fr q
+  | TInfer => closed_ql (length G) p
+  | TInferF Tx frx qx => (exists T2 q2f q2x q2r q2,
+      T = TFun Tx false frx qx T2 q2f q2x q2r q2) /\ closed_ql (length G) p
+  end.
+
+Lemma bidirectional_is_sound: forall e ta Γ T fr q p T' fr' q',
+  ta = TInferF T fr q \/ ta = TInfer \/
+  ta = TCheck T TInfer \/ ta = TCheckQ fr q (TCheck T TInfer) ->
+  telescope Γ -> bidirectional Γ e ta = Some (p, T', fr', q') ->
+  closed_ty (length Γ) T -> closed_ql (length Γ) q -> closed_tm (length Γ) e ->
+  has_type Γ e T' p fr' q' /\ result_match Γ ta p T' fr' q'.
+Proof.
+  assert (HCheck: forall (e: tm) (Γ: tenv) (T: ty) (fr: bool) (q: ql)
+    (p: ql) (T': ty) (fr': bool) (q': ql)
+    (IHta: forall (Γ : tenv) (T : ty) (fr : bool) (q p : ql) 
+         (T' : ty) (fr' : bool) (q' : ql),
+       TInfer = TInferF T fr q \/
+       TInfer = TInfer \/
+       TInfer = TCheck T TInfer \/ TInfer = TCheckQ fr q (TCheck T TInfer) ->
+       telescope Γ ->
+       bidirectional Γ e TInfer = Some (p, T', fr', q') ->
+       closed_ty (length Γ) T ->
+       closed_ql (length Γ) q ->
+       closed_tm (length Γ) e ->
+       has_type Γ e T' p fr' q' /\ result_match Γ TInfer p T' fr' q')
+    (Hbds: bidirectional Γ e (TCheck T TInfer) = Some (p, T', fr', q'))
+    (Htl: telescope Γ)             (Hcty: closed_ty (length Γ) T)
+    (Hcql: closed_ql (length Γ) q) (Hctm: closed_tm (length Γ) e) ,
+    has_type Γ e T' p fr' q' /\ result_match Γ (TCheck T TInfer) p T' fr' q'). {
+    intros. specialize red_tcheck as Hred. unfold tcheck, tinfer in Hred.
+    rewrite Hred in Hbds; clear Hred.
+    crush_match Hbds. eapply IHta in Heqm as [Hht Hrm]; eauto.
+    apply hast_closed in Hht as Hhtc; auto. destruct Hhtc as [Hhtct [Hhtcq _]].
+    eapply upcast_is_sound in Heqm3 as [_ [Hst [Hqp Hcp]]]; auto.
+    2: apply Hhtcq. unfold result_match in *. intuition. 2: crush.
+    eapply t_sub_stp.
+    - eapply has_type_filter_widening. 2: apply Hht. crush.
+    - eapply stp_filter_widening. apply Hst. crush.
+    - apply hast_closed in Hht as [_ [_ Hht]]; auto. crush.
+  }
+  assert (HCheckQ: forall (e: tm) (Γ: tenv) (T: ty) (fr: bool) (q: ql)
+    (p: ql) (T': ty) (fr': bool) (q': ql)
+    (Hred: tcheckqual Γ e T fr q =
+          let* (p, _, fr', q') := tcheck Γ e T in
+          if implb fr' fr then
+            let* p' := check_qstp Γ q' q in
+            Some (qor p p', T, fr, q)
+          else None)
+    (IHta: forall (Γ : tenv) (T0 : ty) (fr : bool) (q p : ql) (T' : ty) (fr' : bool) (q' : ql),
+          TCheck T TInfer = TInferF T0 fr q \/
+          TCheck T TInfer = TInfer \/
+          TCheck T TInfer = TCheck T0 TInfer \/ TCheck T TInfer = TCheckQ fr q (TCheck T0 TInfer) ->
+          telescope Γ ->
+          bidirectional Γ e (TCheck T TInfer) = Some (p, T', fr', q') ->
+          closed_ty (length Γ) T0 ->
+          closed_ql (length Γ) q ->
+          closed_tm (length Γ) e ->
+          has_type Γ e T' p fr' q' /\ result_match Γ (TCheck T TInfer) p T' fr' q')
+    (Hta: TCheckQ fr q (TCheck T TInfer) = TCheckQ fr q (TCheck T TInfer))
+    (Htl: telescope Γ)
+    (Hbds: bidirectional Γ e (TCheckQ fr q (TCheck T TInfer)) = Some (p, T', fr', q'))
+    (Hcty: closed_ty (length Γ) T)
+    (Hcql: closed_ql (length Γ) q)
+    (Hctm: closed_tm (length Γ) e),
+    has_type Γ e T' p fr' q' /\ result_match Γ (TCheckQ fr q (TCheck T TInfer)) p T' fr' q'). {
+    intros. unfold tcheckqual, tcheck in Hred. rewrite Hred in Hbds; clear Hred.
+    crush_match Hbds. eapply IHta in Heqm as [Hht Hrm]; eauto.
+    apply hast_closed in Hht as Hhtc; auto. destruct Hhtc as [_ [Hhtc _]].
+    eapply check_qstp_is_sound in Heqm4 as [Hqs [Hqp Hcp]]; auto. unfold result_match in *.
+    intuition; subst. 2: crush. eapply t_sub_stp.
+    - eapply has_type_filter_widening. 2: apply Hht. crush.
+    - apply stp_qs; auto. eapply qstp_filter_widening. apply Hqs. crush.
+      unfold bsub. apply implb_true_iff. auto.
+    - crush.
+  }
+  intros e; induction e; intros ta; induction ta.
+  all: intros ? ? ? ? ? ? ? ? Hta Htl Hbds Hcty Hcql Hctm.
+  all: destruct Hta as [Hta | [Hta | [Hta | Hta]]]; inversion Hta; subst.
+  all: match goal with
+  | [|- has_type _ ?e _ _ _ _ /\ result_match _ (TCheckQ _ _ _) _ _ _ _ ] =>
+      specialize red_tcheckqual as [Hred | Hred]; eauto
+  | [|- context[TCheck _ _] ] => eapply HCheck; eauto
+  | [|- context[TInferF _ _ _] ] => try discriminate Hbds
+  | [|- context[TInfer] ] => try discriminate Hbds
+  end; clear HCheck HCheckQ; unfold result_match.
+  all: try match goal with
+  | [|- context[tapp _ _] ] => specialize red_tinfer_tapp as [Hred | Hred]
+  end.
+  (* ttrue *)
+  - simpl in Hbds. inversion Hbds; subst. split; auto. crush.
+  (* tfalse *)
+  - simpl in Hbds. inversion Hbds; subst. split; auto. crush.
+  (* tvar *)
+  - simpl in Hbds. crush_match Hbds. split. eapply t_var; eauto. crush.
+    simpl in Hctm. intros x Hx. apply Nat.eqb_eq in Hx; subst. auto.
+  (* tref *)
+  - simpl in Hbds. crush_match Hbds.
+    eapply IHe in Heqm as [Hht Hrm]; eauto.
+  (* tget *)
+  - simpl in Hbds. crush_match Hbds.
+    eapply IHe in Heqm as [Hht Hrm]; eauto.
+  (* tput *)
+  - simpl in Hbds. crush_match Hbds. simpl in Hctm. destruct Hctm as [Hctm1 Hctm2].
+    eapply IHe1 in Heqm as [Hht1 Hrm1]; eauto.
+    eapply IHe2 in Heqm5 as [Hht2 Hrm2]; eauto. split.
+    eapply t_put; eapply has_type_filter_widening; eauto; crush.
+    unfold result_match in *. crush.
+  (* tlet *)
+  - destruct Hred as (e1' & ? & Hred). unfold tinfer, tinferf in Hred.
+    rewrite Hred in Hbds; clear Hred; subst. crush_match Hbds. destruct Hctm as [Hctm1 Hctm2].
+    eapply IHe2 in Heqm as [Hht2 Hrm2]; eauto. unfold result_match in Hrm2.
+    apply hast_closed in Hht2 as Hht2c; auto. destruct Hht2c as (Hht2c1 & Hht2c2 & Hht2c3).
+    eapply IHe1 in Heqm3 as [Hht1 Hrm1]; auto. destruct Hrm1 as ((T2 & q2f & q2x & q2r & q2' & Hrm1a) & Hrm1b).
+    inversion Hrm1a; subst. apply hast_closed in Hht1 as Hht1c; auto.
+    destruct Hht1c as [Hht1c _]. inversion Hht1c; subst. split. 2: crush. destruct b.
+    * eapply t_app. eapply has_type_filter_widening; eauto. crush.
+      eapply has_type_filter_widening; eauto. crush. simpl.
+      exists q0; split. apply qs_sub; crush. unfold vars_trans'. rewrite plift_vt; auto.
+      intros ? [[Q | [? [Q _]]] _]; unfold plift, qdiff in Q.
+      destruct (q0 x); discriminate Q. destruct (q0 x0); discriminate Q. crush.
+    * eapply t_app. eapply has_type_filter_widening; eauto. crush.
+      eapply has_type_filter_widening; eauto. crush. simpl. intuition.
+      apply qs_sub; crush. crush.
+  (* tapp *)
+  - unfold tinfer, tcheck in Hred. rewrite Hred in Hbds; clear Hred.
+    simpl in Hbds. simpl in Hctm. destruct Hctm as [Hctm1 Hctm2]. crush_match Hbds.
+    all: match goal with
+    | [H1: bidirectional _ ?e1 TInfer = _,
+       IHe1: context[bidirectional _ ?e1 _ = _ -> _] |- _] =>
+        eapply IHe1 in H1 as [Hht1 Hrm1]; eauto
+    end.
+    all: apply hast_closed in Hht1 as Hht1c; auto;
+      destruct Hht1c as [Hht1c _]; inversion Hht1c; subst.
+    all: match goal with
+    | [H2: bidirectional _ ?e2 (TCheck _ TInfer) = _,
+       IHe2: context[bidirectional _ ?e2 _ = _ -> _] |- _] =>
+        eapply IHe2 in H2 as [Hht2 Hrm2]; eauto
+    end.
+    all: unfold result_match in Hrm1, Hrm2; destruct Hrm2; subst.
+    * split. eapply t_app.
+      eapply has_type_filter_widening; eauto; crush.
+      eapply has_type_filter_widening; eauto; crush.
+      simpl; auto. crush. crush.
+    * apply check_qstp_is_sound in Heqm12; auto.
+      destruct Heqm12 as (HQS & ? & ?). split. eapply t_app.
+      eapply has_type_filter_widening; eauto; crush.
+      eapply has_type_filter_widening; eauto; crush.
+      simpl. right. split; auto.
+      eapply qstp_filter_widening. eauto. crush. crush. crush.
+      apply hast_closed in Hht2 as [_ [Hht2c _]]; auto.
+    * apply check_qstp_is_sound in Heqm14; auto.
+      destruct Heqm14 as (HQS & ? & ?). split. eapply t_app.
+      eapply has_type_filter_widening; eauto; crush.
+      eapply has_type_filter_widening; eauto; crush.
+      simpl. left. split; auto. exists i. split; auto.
+      eapply qstp_filter_widening. eauto. crush. crush. crush.
+      apply hast_closed in Hht2 as [_ [Hht2c _]]; auto. simpl in Hctm1. crush.
+    * apply get_qstp_is_sound in Heqm11 as (? & ? & ?); auto.
+      apply check_subset_is_sound in Heqm12; auto.
+      split. eapply t_app.
+      eapply has_type_filter_widening; eauto; crush.
+      eapply has_type_filter_widening; eauto; crush.
+      simpl. exists q7. split. eapply qstp_filter_widening; eauto. crush.
+      crush. crush. crush. intros ? Q. apply andb_true_iff in Q as [_ Q].
+      bdestruct (x <? length Γ); auto.
+      apply vars_trans_closed in Q; auto.
+      apply hast_closed in Hht1 as [_ [Hht1c2 _]]; auto.
+      apply hast_closed in Hht2 as [_ [Hht2c _]]; auto.
+    * apply check_qstp_is_sound in Heqm12; auto. destruct Heqm12 as (HQS & ? & ?).
+      split. eapply t_app.
+      eapply has_type_filter_widening; eauto; crush.
+      eapply has_type_filter_widening; eauto; crush.
+      simpl. split; auto. eapply qstp_filter_widening; eauto.
+      crush. crush. crush.
+      apply hast_closed in Hht2 as [_ [Hht2c _]]; auto.
+  (* tabs - infer *)
+  - simpl in Hbds. crush_match Hbds. eapply telescope_extend in Htl; eauto. 
+    eapply IHe in Heqm as (Hht & Hrm); eauto.
+    apply hast_closed in Hht as Hhtc; auto. destruct Hhtc as (Hhtc1 & Hhtc2 & Hhtc3).
+    eapply avoidance_is_sound in Heqm3 as (? & ? & ? & ? & ? & ? & Hstp); eauto.
+    2: intro; auto. unfold result_match in Hrm. split. 2: split.
+    apply t_abs; auto. qsimpl. replace (qor (qand (qdiff (qor q1 q3) (qone (length Γ))) q0) q0) with q0.
+    eapply t_sub_stp; auto.
+    * eapply has_type_filter_widening; eauto. crush. bdestruct (x =? length Γ); crush.
+    * eapply stp_filter_widening; auto.
+      replace (qor (qdiff (qor q q2) (qone (length Γ)))
+                   (qif (qor q q2 (length Γ)) (qone (length Γ)))) with (qor q q2) at 1.
+      eauto. apply functional_extensionality; intros. unfold qor, qdiff, qone, qif.
+      destruct (q x) eqn:Hqx; destruct (q2 x) eqn:Hq2x; bdestruct (x =? length Γ).
+      1-8: subst; try rewrite Hqx, Hq2x; auto. simpl. destruct (q (length Γ) || q2 (length Γ)); auto.
+      crush. bdestruct (x =? length Γ); auto.
+    * crush. destruct (qor q q2 (length Γ)); intuition.
+    * apply functional_extensionality; intros. unfold qor, qand.
+      destruct (q0 x). rewrite orb_true_r; auto. rewrite andb_false_r; auto.
+    * crush.
+    * crush. apply Hhtc2 in H5. simpl in *. lia. apply H4 in H5. apply H3 in H5.
+      simpl in *. lia.
+    * crush. apply Hrm in H5. simpl in *. lia. apply H3 in H5. simpl in *. lia.
+    * crush.
+    * eauto 10.
+    * crush. apply Hrm in H6. simpl in *. lia. apply H3 in H6. simpl in *. lia.
+    * eapply closedty_extend. eauto. simpl. lia.
+    * instantiate (1 := q0). crush. simpl. crush.
+  (* tabs - check *)
+  - destruct Hred as (e' & T1 & q1fn & q1fr & q1 & T2 & q2fn & q2ar & q2fr & q2 & Hred' & ? & ? & Hred).
+    inversion Hred'; subst. unfold tcheckqual in Hred. rewrite Hred in Hbds; clear Hred.
+    crush_match Hbds. inversion Hcty; subst.
+    eapply IHe in Heqm as [Hht Hrm]; auto.
+    unfold result_match in *. intuition; subst.
+    eapply t_sub_stp.
+    * apply t_abs; auto. rewrite qand_sub. eapply has_type_filter_widening; eauto.
+      apply (check_subset_is_sound (S (length Γ))) in Heqm3; auto.
+      rewrite qand_sub. all: auto. crush. destruct q1fn; crush. crush. crush.
+    * destruct q2ar; simpl. apply s_refl. closed. crush.
+      match goal with
+      | [|- stp _ _ _ (TFun _ _ _ _ _ _ ?f _ _) _ _ _ _ _] => destruct f eqn:Hq2x
+      end.
+      2: apply s_refl; [closed | crush].
+      repeat apply andb_true_iff in Hq2x as [Hq2x ?]. apply negb_true_iff in Hq2x. subst.
+      apply check_subset_is_sound in H; auto. eapply s_trans.
+      apply s_fun_ar2; auto. 2,4: intro Q; apply Q.
+      3: apply qs_sub. 3: intros ? Q; apply Q. all: auto.
+      instantiate (1 := q2fn). intro Q. apply orb_true_iff in Q as [Q | Q]; auto.
+      apply (implb_true_iff q1fn) in H0; auto.
+      instantiate (1 := qor q2 (qif (q2fn && negb q1fn) q')).
+      apply qs_sub; destruct (q2fn && negb q1fn); crush.
+      apply H in H2 as [? | ?]; intuition.
+      destruct (q2fn && negb q1fn) eqn:Hq2f. 2: qsimpl; apply s_refl; [closed | crush].
+      apply andb_true_iff in Hq2f as [Hq2f Hq1f]. apply negb_true_iff in Hq1f. subst.
+      apply s_fun_fn2; auto. 1-3,5: intro; auto. all: apply qs_sub; crush.
+    * crush.
+    * crush.
+    * apply telescope_extend; auto. destruct q1fn; crush.
+    * closed.
+    * crush; simpl; crush. destruct q2fn; crush.
+      match type of H with
+      | if ?b then _ else _ => destruct b; crush
+      end.
+  (* tas *)
+  - simpl in Hbds. crush_match Hbds. eapply IHe in Heqm as [Hht Hrm]; auto.
+    unfold result_match in Hrm. intuition; subst. eapply t_ascript; auto.
+    apply hast_closed in Hht as [_ [_ Hhtc]]; auto. all: simpl in Hctm; tauto.
+Unshelve.
+  all: apply true.
+Qed.
+
+Definition MkPair z T a1 a2 :=
+  tas (tabs (tapp (tapp (tvar z) (tvar a1)) (tvar a2)))
+  (TPair_trans T (qone a1) (qone a2)) false (qor (qone a1) (qone a2)).
+
+Definition MkFstT z T q p :=
+  tapp p (tas (tabs (tabs (tvar z)))
+              (TFun_trans_inner T q (TFun_trans_inner_ignore T T))
+              false q).
+
+Definition MkSndT z T q p :=
+  tapp p (tas (tabs (tabs (tvar (S z))))
+              (TFun_trans_inner_ignore T (TFun_trans_inner T q T))
+              false q).
+
+Definition MkFstO z T p :=
+  tapp p (tas (tabs (tabs (tvar z)))
+              (TFun_opaque_inner T (TFun_opaque_inner T T))
+              false qempty).
+
+Definition MkSndO z T p :=
+  tapp p (tas (tabs (tabs (tvar (S z))))
+              (TFun_opaque_inner T (TFun_opaque_inner T T))
+              false qempty).
+
+Definition pair_example :=
+  tas
+  (tlet (* 0 *)
+    (tlet (* 0 *) (tref ttrue)
+    (tlet (* 1 *) (tref tfalse)
+    (tlet (* 2 *) (MkPair 2 (TRef TBool) 0 1)
+    (tlet (* 3 *) (tas (MkFstT 3 (TRef TBool)       (qone 0) (tvar 2))
+                                 (TRef TBool) false (qone 0))
+    (tlet (* 4 *) (tas (MkSndT 4 (TRef TBool)       (qone 1) (tvar 2))
+                                 (TRef TBool) false (qone 1))
+    (MkPair 5 (TRef TBool) 3 4) )))))
+  (tlet (* 1 *) (tas (MkFstO 1 (TRef TBool) (tvar 0))
+                               (TRef TBool) false (qone 0))
+  (tlet (* 2 *) (tas (MkSndO 2 (TRef TBool) (tvar 0))
+                               (TRef TBool) false (qone 0))
+  (MkPair 3 (TRef TBool) 1 2))))
+  (TPair_opaque (TRef TBool)) true qempty.
+
+Eval compute in tinfer nil pair_example.
+
+Example pair_example_is_sound:
+  closed_tm 0 pair_example.
+Proof.
+  simpl; intuition.
+  all: repeat match goal with
+  | [|- closed_ty _ _ ] => closed
+  end.
+  all: intros ? Q; repeat match goal with
+  | [H: qempty _ = true |- _] => inversion H
+  | [H: qone _ _ = true |- _] =>
+      unfold qone in H; apply Nat.eqb_eq in H; subst; lia
+  | [H: qor _ _ _ = true |- _] =>
+      apply orb_true_iff in H as [? | ?]
+  end.
+Qed.
 
 End STLC.

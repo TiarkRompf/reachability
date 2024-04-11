@@ -45,9 +45,9 @@ Tight qualifiers (Fall 2023)
 - [stlc_reach_ref_kill_tight_tight_effects.v](stlc_reach_ref_kill_tight_tight_effects.v) -- tighten qualifiers further
 
 
-Subtyping (Winter 2023)
+Subtyping (Spring 2024)
 
-- [stlc_reach_ref_overlap_self_fresh_mut.v](stlc_reach_ref_overlap_self_fresh_mut_stp.v) -- subtyping, pair encoding, escaping via upcast to self-ref
+- [stlc_reach_ref_overlap_self_fresh_mut.v](stlc_reach_ref_overlap_self_fresh_mut_stp.v) -- subtyping, pair encoding, escaping via upcast to self-ref, also type checking [5]
 
 
 
@@ -81,3 +81,5 @@ Oliver Bračevac, Guannan Wei, Luke Jiang, Supun Abeysinghe, Songlin Jia, Siyuan
 Yuyan Bao, Guannan Wei, Oliver Bračevac, Tiark Rompf
 ([pdf](https://arxiv.org/pdf/2309.05885.pdf)).
 
+[5] **Escape with Your Self: Expressive Reachability Types with Sound and Decidable Bidirectional Type Checking**></br>
+Songlin Jia, Guannan Wei, Siyuan He, Yueyang Tang, Yuyan Bao, Tiark Rompf.

@@ -17,7 +17,7 @@
 |                      | Semantic Typing        | `Definition sem_type` |
 |                      | Semantic Subtyping     | `Definition sem_stp2` |
 |                      | Semantic Subqualifying | `Definition sem_qstp` |
-|                      | Various semantic typing rules | ... |
+|                      | various semantic typing rules | ... |
 | Metatheory | Subqualifying | `Theorem qstp_fundamental`  |
 |            | Subtyping     | `Theorem stp2_fundamental`  |
 |            | Typing        | `Theorem full_total_safety` | $\S 3.4$ |

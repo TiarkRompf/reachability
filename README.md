@@ -14,6 +14,7 @@ Reachability types are a new take on modeling lifetimes and sharing in high-leve
 
 * [`log-rel-binary`](https://github.com/TiarkRompf/reachability/tree/main/log-rel-binary/) -- Binary logical relations for establishing equational reasoning about $λ^\diamond$, $λ_\varepsilon^\diamond$, and its variants [4].
 
+* [`checking`](https://github.com/TiarkRompf/reachability/tree/main/checking/) -- Bidirectional type system $\lambda^\diamond_R$ with decidable type checking/inference, including refined subtyping for self-references [5]
 
 ## Prototype Implementations
 
@@ -53,4 +54,5 @@ Yuyan Bao, Guannan Wei, Oliver Bračevac, Tiark Rompf
 ([pdf](https://arxiv.org/pdf/2309.05885.pdf)).
 
 [5] **Escape with Your Self: Expressive Reachability Types with Sound and Decidable Bidirectional Type Checking** </br>
-Songlin Jia, Guannan Wei, Siyuan He, Yueyang Tang, Yuyan Bao, Tiark Rompf.
+Songlin Jia, Guannan Wei, Siyuan He, Yueyang Tang, Yuyan Bao, Tiark Rompf
+([pdf](https://arxiv.org/pdf/2404.08217.pdf)).

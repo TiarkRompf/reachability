@@ -21,7 +21,7 @@
 | Metatheory | Subqualifying | `Theorem qstp_fundamental`  |
 |            | Subtyping     | `Theorem stp2_fundamental`  |
 |            | Typing        | `Theorem full_total_safety` | $\S 3.4$ |
-| Typing Examples | Box (V1) | Transparent `Lemma t_box_transparent`,<br>`Lemma t_unbox_transparent`,<br>`Lemma ex_box_unbox_transparent1` |
+| Typing Examples | Box (v1) | Transparent `Lemma t_box_transparent`,<br>`Lemma t_unbox_transparent`,<br>`Lemma ex_box_unbox_transparent1` |
 |                 |          | Opaque `Lemma t_unbox_opaque1` |
 |                 | Box (v2) | Transparent `Lemma t_box_transparent2`,<br>`Lemma t_unbox_transparent2`,<br>`Lemma ex_box_unbox_transparent2` |
 |                 |          | Opaque `Lemma t_unbox_opaque2` |

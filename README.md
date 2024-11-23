@@ -14,6 +14,8 @@ Reachability types are a new take on modeling lifetimes and sharing in high-leve
 
 * [`log-rel-binary`](https://github.com/TiarkRompf/reachability/tree/main/log-rel-binary/) -- Binary logical relations for establishing equational reasoning about $λ^\diamond$, $λ_\varepsilon^\diamond$, and its variants [4].
 
+* [`log-rel-step-indexed`]https://github.com/TiarkRompf/reachability/tree/main/log-rel-step-indexed/) -- Step-indexed logical relations for $λ^\diamond$, $λ_\varepsilon^\diamond$ and its variants [4].
+
 * [`checking`](https://github.com/TiarkRompf/reachability/tree/main/checking/) -- Bidirectional type system $\lambda^\diamond_R$ with decidable type checking/inference, including refined subtyping for self-references [5]
 
 ## Prototype Implementations
@@ -29,7 +31,7 @@ polymorphic reachability types [2].
 * [Oliver Bračevac](https://bracevac.org) (Initial mechanization lead 2021-2022)
 * [Guannan Wei](https://continuation.passing.style) (Polymorphism lead 2023-2024)
 * [Yuyan Bao](https://yuyanbao.github.io) (Logical relations lead 2023-2024)
-* [Songlin Jia](https://songlinj.github.io)
+* [Songlin Jia](https://songlinj.github.io) (Type checking lead 2024-2025)
 * [Siyuan He](https://sweetsinpackets.github.io)
 * [David Deng](https://github.com/PROgram52bc)
 * [Yueyang Tang](https://github.com/Emanon42)

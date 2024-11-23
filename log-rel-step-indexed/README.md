@@ -1,4 +1,4 @@
-# Unary Logical Relations for Reachability Types
+# Step-Indexed Logical Relations for Reachability Types
 
 ## Overview
 
@@ -11,7 +11,6 @@ Basics (Winter 2024)
 - [stlc_ref_indexed_reachb_effs.v](stlc_ref_indexed_reachb_effs.v)
 - [stlc_ref_indexed_reach_nested.v](stlc_ref_indexed_reach_nested.v)
 - [stlc_ref_indexed_reach_nested_effs.v](stlc_ref_indexed_reach_nested_effs.v)
-- [stlc.ref_indexed_reachb.v](stlc.ref_indexed_reachb.v)
 
 
 ## Compilation

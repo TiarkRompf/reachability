@@ -7,7 +7,10 @@ Step-Indexed Logical relations for proving semantic type soundness of reachabili
 
 Basics (Winter 2024)
 
-- [stlc.ref_indexed_reachb.v](stlc.ref_indexed_reachb.v)
+- [stlc_ref_indexed_reachb.v](stlc_ref_indexed_reachb.v)
+- [stlc_ref_indexed_reachb_effs.v](stlc_ref_indexed_reachb_effs.v)
+- [stlc_ref_indexed_reach_nested.v](stlc_ref_indexed_reach_nested.v)
+- [stlc_ref_indexed_reach_nested_effs.v](stlc_ref_indexed_reach_nested_effs.v)
 
 
 ## Compilation

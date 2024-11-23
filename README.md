@@ -14,7 +14,7 @@ Reachability types are a new take on modeling lifetimes and sharing in high-leve
 
 * [`log-rel-binary`](https://github.com/TiarkRompf/reachability/tree/main/log-rel-binary/) -- Binary logical relations for establishing equational reasoning about $λ^\diamond$, $λ_\varepsilon^\diamond$, and its variants [4].
 
-* [`log-rel-step-indexed`]https://github.com/TiarkRompf/reachability/tree/main/log-rel-step-indexed/) -- Step-indexed logical relations for $λ^\diamond$, $λ_\varepsilon^\diamond$ and its variants [4].
+* [`log-rel-step-indexed`](https://github.com/TiarkRompf/reachability/tree/main/log-rel-step-indexed/) -- Step-indexed logical relations for $λ^\diamond$, $λ_\varepsilon^\diamond$ and its variants [4].
 
 * [`checking`](https://github.com/TiarkRompf/reachability/tree/main/checking/) -- Bidirectional type system $\lambda^\diamond_R$ with decidable type checking/inference, including refined subtyping for self-references [5]
 

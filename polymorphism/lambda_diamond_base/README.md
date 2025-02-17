@@ -180,4 +180,4 @@ Then, to compile/check all proof scripts listed in `_CoqProject`:
 
 `make -f CoqMakefile all`
 
-Compatibility tested with Coq `8.16.0`.
+Compatibility tested with Coq `8.20.1`.

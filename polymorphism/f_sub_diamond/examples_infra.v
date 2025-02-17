@@ -1,5 +1,4 @@
-Require Export Arith.EqNat.
-Require Export Arith.Le.
+Require Export PeanoNat.
 Require Import Coq.Arith.Arith.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Program.Equality.
@@ -27,7 +26,7 @@ Local Open Scope qualifiers.
 
 (* iterating over each hypothesis once, inspired by https://stackoverflow.com/a/46536938: *)
 (* marker for iterating over hypotheses *)
-Inductive ltac_Mark : Type :=
+Inductive ltac_Mark : Prop :=
 | ltac_mark : ltac_Mark.
 
 (* apply tac over all the premises in the goal until the marker*)

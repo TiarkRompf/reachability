@@ -1,5 +1,5 @@
-Require Export Arith.EqNat.
-Require Export Arith.Le.
+Set Warnings "-intuition-auto-with-star".
+Require Export PeanoNat.
 Require Import Coq.Program.Equality.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Arith.Arith.
@@ -122,9 +122,9 @@ Definition closed_Qual b f l (q : Qual) :=
 
 Ltac unfold_q := repeat (unfold open_qual, closed_qual, splice_qual, subst_qual, subq, qdom, q_empty, qqplus, qand, qor, qdiff, qfresh, qfvs, qbvs, qlocs in *; simpl in *).
 Ltac unfold_Q := repeat (unfold Q_lift, open_Qual, closed_Qual, splice_Qual, subst_Qual, Subq, Qdom, Q_empty, Qqplus, Qand, Qor, Qdiff, qfresh, qfvs, qbvs, qlocs in *; simpl in *).
-Ltac Qcrush := clift; unfold_Q; nlift; blift; unfold_N; 
-  repeat match goal with 
-    [ _ : _ |- (_,_) = (_,_) ] => f_equal 
+Ltac Qcrush := clift; unfold_Q; nlift; blift; unfold_N;
+  repeat match goal with
+    [ _ : _ |- (_,_) = (_,_) ] => f_equal
          end; try apply functional_extensionality; intros; try apply propositional_extensionality; intuition.
 
 #[global] Hint Unfold qdom : core.
@@ -583,8 +583,8 @@ Proof.
   Qcrush. qual_destruct d. unfold_Q. unfold_q. intuition. repeat f_equal; eauto using n_splice_id.
 Qed.
 
-Lemma splice_qual_open : forall {d j fr n m}, 
-  splice_qual n (open_qual j ${fr}(m + n) d) = 
+Lemma splice_qual_open : forall {d j fr n m},
+  splice_qual n (open_qual j ${fr}(m + n) d) =
   open_qual j ${fr}(S (m + n)) (splice_qual n d).
 Proof.
   intros. qual_destruct d. apply Q_lift_eq. repeat rewrite Q_lift_open_qual, Q_lift_splice_qual. Qcrush.
@@ -626,21 +626,21 @@ intros. qual_destruct d. unfold_q. bdestruct (bvs i); bdestruct (bvs j); simpl.
 #[local] Remove Hints n_reflect_true : bdestruct.
 Qed.
 
-Lemma open_qual_commute' : forall d i j fr x d' f l, i <> j -> 
+Lemma open_qual_commute' : forall d i j fr x d' f l, i <> j ->
   closed_Qual 0 f l d' ↑ ->
   open_qual i ${fr}x (open_qual j d' d)
   = open_qual j d' (open_qual i ${fr}x d).
-qual_destruct d; qual_destruct d'. intros. 
+qual_destruct d; qual_destruct d'. intros.
 unfold_q.
 #[local] Hint Resolve n_reflect_true : bdestruct.
-bdestruct (bvs i); bdestruct (bvs j); bdestruct (bvs0 i); bdestruct (bvs0 j); simpl; apply Q_lift_eq; Qcrush; exfalso; eauto. 
+bdestruct (bvs i); bdestruct (bvs j); bdestruct (bvs0 i); bdestruct (bvs0 j); simpl; apply Q_lift_eq; Qcrush; exfalso; eauto.
 #[local] Remove Hints n_reflect_true : bdestruct.
 Qed.
 
 Lemma open_qual_commute'' : forall d i j d' d'' f l, i <> j -> closed_Qual 0 f l d' ↑ -> closed_Qual 0 f l d'' ↑ ->
   open_qual i d'' (open_qual j d' d)
   = open_qual j d' (open_qual i d'' d).
-qual_destruct d. qual_destruct d'. qual_destruct d''. intros. 
+qual_destruct d. qual_destruct d'. qual_destruct d''. intros.
 unfold_q.
 #[local] Hint Resolve n_reflect_true : bdestruct.
 bdestruct (bvs i); bdestruct (bvs j); bdestruct (bvs0 i); bdestruct (bvs0 j); bdestruct (bvs1 i); bdestruct (bvs1 j); simpl; apply Q_lift_eq; Qcrush; exfalso; eauto.
@@ -687,11 +687,11 @@ Lemma open_subst1_qual_comm : forall {q : qual} {k g fr df ff lf},
     closed_Qual 0 ff lf df↑ ->
     open_qual k ${fr}g (subst_qual q 0 df) = subst_qual (open_qual k ${fr}(S g) q) 0 df.
 Proof.
-  intros. qual_destruct df. qual_destruct q. unfold_q. 
+  intros. qual_destruct df. qual_destruct q. unfold_q.
   #[local] Hint Resolve n_reflect_true : bdestruct.
   bdestruct (bvs0 k); simpl;
-  bdestruct (fvs0 0); simpl; 
-  bdestruct (bvs k); simpl; 
+  bdestruct (fvs0 0); simpl;
+  bdestruct (bvs k); simpl;
   bdestruct (n_one (S g) 0);
   apply Q_lift_eq; clift; Qcrush; exfalso; eauto.
   #[local] Remove Hints n_reflect_true : bdestruct.
@@ -704,9 +704,9 @@ Lemma closed_qual_subst1 : forall {q b f l},
       l <= l2 -> l1 <= l2 ->
       closed_Qual b f l2 (subst_qual q 0 d1) ↑.
 Proof.
-  intros. qual_destruct q. unfold_q. 
+  intros. qual_destruct q. unfold_q.
   #[local] Hint Resolve n_reflect_true : bdestruct.
-  bdestruct (fvs 0); Qcrush; try solve [eauto using Arith_prebase.lt_S_n, Nat.lt_le_trans]; try solve [exfalso; eauto 3].
+  bdestruct (fvs 0); Qcrush; try solve [eauto using PeanoNat.lt_S_n, Nat.lt_le_trans]; try solve [exfalso; eauto 3].
   #[local] Remove Hints n_reflect_true : bdestruct.
 Qed.
 
@@ -716,7 +716,7 @@ Proof.
   intros. qual_destruct q1. qual_destruct q2. qual_destruct df. unfold_q.
   #[local] Hint Resolve n_reflect_true : bdestruct.
   bdestruct (fvs 0); simpl;
-  bdestruct (fvs0 0); simpl; apply Q_lift_eq; Qcrush. 
+  bdestruct (fvs0 0); simpl; apply Q_lift_eq; Qcrush.
   #[local] Remove Hints n_reflect_true : bdestruct.
 Qed.
 
@@ -730,8 +730,8 @@ Proof.
 Qed.
 
 Lemma subst_filter0 : forall {d φ l fr}, closed_Qual 0 0 l (Q_lift d) -> Subq (Q_lift ${fr}0) (Q_lift φ) -> Subq (Q_lift d) (Q_lift (subst_qual φ 0 d)).
-  intros. qual_destruct φ. unfold_q. 
+  intros. qual_destruct φ. unfold_q.
   #[local] Hint Resolve n_reflect_true : bdestruct.
-  bdestruct (fvs 0); Qcrush. 
+  bdestruct (fvs 0); Qcrush.
   #[local] Remove Hints n_reflect_true : bdestruct.
 Qed.

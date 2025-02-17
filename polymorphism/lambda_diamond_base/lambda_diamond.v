@@ -1,5 +1,4 @@
-Require Export Arith.EqNat.
-Require Export Arith.Le.
+Require Export PeanoNat.
 Require Import Coq.Arith.Arith.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Program.Equality.
@@ -619,7 +618,7 @@ Qed.
 #[global] Hint Resolve extends_trans : core.
 
 Lemma extends_empty : forall {A}, forall{l : list A}, l ⊇ [].
-  intros. unfold extends. exists l. apply app_nil_end.
+  intros. unfold extends. exists l. rewrite app_nil_r. auto.
 Qed.
 #[global] Hint Resolve extends_empty : core.
 
@@ -629,7 +628,7 @@ Qed.
 #[global] Hint Resolve extends_cons : core.
 
 Lemma extends_length : forall {A}, forall{l1 l2 : list A}, l1 ⊇ l2 -> length l2 <= length l1.
-  intros. unfold extends in H. destruct H as [l' Heq]. subst. rewrite app_length. lia.
+  intros. unfold extends in H. destruct H as [l' Heq]. subst. rewrite length_app. lia.
 Qed.
 #[global] Hint Resolve extends_length : core.
 
@@ -637,7 +636,7 @@ Lemma extends_ldom : forall {Σ' Σ : senv}, Σ' ⊇ Σ -> ldom Σ ⊑ ldom Σ'.
   intros. inversion H. unfold ldom. simpl.
   intuition. unfold dom.
   assert (‖Σ'‖ = ‖x ++ Σ‖). subst. auto.
-  rewrite app_length in H1. assert (‖Σ‖ <= ‖Σ'‖). lia.
+  rewrite length_app in H1. assert (‖Σ‖ <= ‖Σ'‖). lia.
   apply nset_subset. lia.
 Qed.
 #[global] Hint Resolve extends_ldom: core.
@@ -727,7 +726,7 @@ Proof.
 Qed.
 
 Lemma splice_tenv_length : forall {n Γ}, ‖ Γ ↑ᴳ n ‖ = ‖Γ‖.
-  intros. unfold splice_tenv. rewrite map_length. auto.
+  intros. unfold splice_tenv. rewrite length_map. auto.
 Qed.
 
 Lemma closed_tm_monotone : forall {t b l f}, closed_tm b f l t -> forall {b' f' l'}, b <= b' -> f <= f' -> l <= l' -> closed_tm b' f' l' t.
@@ -1122,7 +1121,7 @@ Lemma splice_open' : forall {T} {A} {D : A} {ρ ρ'}, ((T <~²ᵗ (ρ ++ ρ')) �
   replace (S (‖ ρ ++ D :: ρ' ‖)) with (S (S (‖ρ‖) + (‖ρ'‖))).
   replace (‖ ρ ++ D :: ρ' ‖) with (S (‖ρ‖ + ‖ρ'‖)).
   repeat rewrite <- splice_open. auto.
-  all: rewrite app_length; simpl; lia.
+  all: rewrite length_app; simpl; lia.
 Qed.
 
 Lemma splice_qual_open' : forall {d} {A} {D : A} {ρ ρ'}, ((d <~²ᵈ (ρ ++ ρ')) ↑ᵈ ‖ρ'‖) = (d ↑ᵈ ‖ρ'‖) <~²ᵈ (ρ ++ D :: ρ').
@@ -1131,7 +1130,7 @@ Lemma splice_qual_open' : forall {d} {A} {D : A} {ρ ρ'}, ((d <~²ᵈ (ρ ++ ρ
   replace (S (‖ ρ ++ D :: ρ' ‖)) with (S (S (‖ρ‖) + (‖ρ'‖))).
   replace (‖ ρ ++ D :: ρ' ‖) with (S (‖ρ‖ + ‖ρ'‖)).
   repeat rewrite <- splice_qual_open. auto.
-  all: rewrite app_length; simpl; lia.
+  all: rewrite length_app; simpl; lia.
 Qed.
 
 Lemma splice_ty_open' : forall {T} {A} {D : A} {ρ ρ'}, ((T <~²ᵀ (ρ ++ ρ')) ↑ᵀ ‖ρ'‖) = (T ↑ᵀ ‖ρ'‖) <~²ᵀ (ρ ++ D :: ρ').
@@ -1140,7 +1139,7 @@ Lemma splice_ty_open' : forall {T} {A} {D : A} {ρ ρ'}, ((T <~²ᵀ (ρ ++ ρ')
   replace (S (‖ ρ ++ D :: ρ' ‖)) with (S (S (‖ρ‖) + (‖ρ'‖))).
   replace (‖ ρ ++ D :: ρ' ‖) with (S (‖ρ‖ + ‖ρ'‖)).
   repeat rewrite <- splice_ty_open. auto.
-  all: rewrite app_length; simpl; lia.
+  all: rewrite length_app; simpl; lia.
 Qed.
 
 Lemma splice_closed : forall {T b n m l}, closed_tm b (n + m) l T -> closed_tm b (S (n + m)) l (T ↑ᵗ m).
@@ -1165,21 +1164,21 @@ Lemma splice_ty_closed : forall {T b n m l}, closed_ty b (n + m) l T -> forall {
 Qed.
 
 Lemma splice_closed' : forall {T b l} {A} {D : A} {ρ ρ'}, closed_tm b (‖ρ ++ ρ'‖) l T -> closed_tm b (‖ρ ++ D :: ρ'‖) l (T ↑ᵗ ‖ρ'‖).
-  intros. rewrite app_length in H.
+  intros. rewrite length_app in H.
   replace (‖ ρ ++ D :: ρ' ‖) with (S (‖ρ‖ + ‖ρ'‖)).
-  apply splice_closed. auto. simpl. rewrite app_length. simpl. lia.
+  apply splice_closed. auto. simpl. rewrite length_app. simpl. lia.
 Qed.
 
 Lemma splice_qual_closed' : forall {d b l} {A} {D : A} {ρ ρ'}, closed_qual b (‖ρ ++ ρ'‖) l d -> closed_qual b (‖ρ ++ D :: ρ'‖) l (d ↑ᵈ ‖ρ'‖).
-  intros. rewrite app_length in H.
+  intros. rewrite length_app in H.
   replace (‖ ρ ++ D :: ρ' ‖) with (S (‖ρ‖ + ‖ρ'‖)).
-  eapply splice_qual_closed; eauto. simpl. rewrite app_length. simpl. lia.
+  eapply splice_qual_closed; eauto. simpl. rewrite length_app. simpl. lia.
 Qed.
 
 Lemma splice_ty_closed' : forall {T b l} {A} {D : A} {ρ ρ'}, closed_ty b (‖ρ ++ ρ'‖) l T -> closed_ty b (‖ρ ++ D :: ρ'‖) l (T ↑ᵀ ‖ρ'‖).
-  intros. rewrite app_length in H.
+  intros. rewrite length_app in H.
   replace (‖ ρ ++ D :: ρ' ‖) with (S (‖ρ‖ + ‖ρ'‖)).
-  eapply splice_ty_closed; eauto. simpl. rewrite app_length. simpl. lia.
+  eapply splice_ty_closed; eauto. simpl. rewrite length_app. simpl. lia.
 Qed.
 
 Lemma splice_qual_closed'' : forall {q x b l k}, closed_qual b x l q -> k <= x -> closed_qual b (S x) l (q ↑ᵈ k).
@@ -1374,7 +1373,7 @@ Lemma indexr_splice_tenv : forall {Γ1 i Γ2 b U du},
     indexr i (Γ1 ++ Γ2) = Some (b, U, du) -> forall {k}, ‖Γ2‖ <= i ->
     indexr i (Γ1 ↑ᴳ k ++ Γ2) = Some (b, U ↑ᵀ k, du ↑ᵈ k).
   induction Γ1; intros; simpl in *; intuition. apply indexr_var_some' in H. lia.
-  rewrite app_length in *. rewrite splice_tenv_length.
+  rewrite length_app in *. rewrite splice_tenv_length.
   destruct (Nat.eqb i (‖Γ1‖ + ‖Γ2‖)) eqn:Heq. inversion H. subst.
   simpl. auto. apply IHΓ1; eauto.
 Qed.
@@ -1442,7 +1441,7 @@ Lemma weaken_qstp_gen : forall {Γ1 Γ2 Σ d1 d2},
 Proof.
   intros Γ1 Γ2 Σ d1 d2 HSTP. remember (Γ1 ++ Γ2) as Γ. generalize dependent Γ1. induction HSTP; intros Γ1 HeqG T'; subst.
   - constructor. apply subqual_splice_lr'. auto. apply splice_qual_closed'.
-    rewrite app_length in *. rewrite splice_tenv_length. auto.
+    rewrite length_app in *. rewrite splice_tenv_length. auto.
   - rewrite splice_qual_qlub_dist. bdestruct (f <? ‖Γ2‖).
     * rewrite splice_qual_just_fv_lt; auto. erewrite @splice_qual_id with (d:=df).
       eapply qs_self; eauto. rewrite indexr_skips. rewrite indexr_skips in H. rewrite indexr_skip. eauto.
@@ -1461,7 +1460,7 @@ Proof.
       eapply splice_ty_closed''; eauto. eapply splice_qual_closed''; eauto.
       rewrite <- not_fresh_splice_iff. auto.
   - repeat rewrite splice_qual_qlub_dist. eapply qs_cong.
-    eapply IHHSTP. auto. apply splice_qual_closed'. rewrite app_length in *. rewrite splice_tenv_length. auto.
+    eapply IHHSTP. auto. apply splice_qual_closed'. rewrite length_app in *. rewrite splice_tenv_length. auto.
   - eapply qs_trans; eauto.
 Qed.
 
@@ -1481,10 +1480,10 @@ Qed.
 
 Lemma weaken_qstp_store : forall {Γ Σ d1 d2}, qstp Γ Σ d1 d2 -> forall {Σ'}, qstp Γ (Σ' ++ Σ) d1 d2.
   intros. induction H.
-  - apply qs_sq; auto. rewrite app_length. eapply closed_qual_monotone; eauto. lia.
-  - eapply qs_self; eauto. erewrite app_length. eapply closed_qual_monotone; eauto. lia.
-  - eapply qs_qvar; eauto. all : erewrite app_length. eapply closed_ty_monotone; eauto. lia. eapply closed_qual_monotone; eauto. lia.
-  - eapply qs_cong; eauto. rewrite app_length. eapply closed_qual_monotone; eauto. lia.
+  - apply qs_sq; auto. rewrite length_app. eapply closed_qual_monotone; eauto. lia.
+  - eapply qs_self; eauto. erewrite length_app. eapply closed_qual_monotone; eauto. lia.
+  - eapply qs_qvar; eauto. all : erewrite length_app. eapply closed_ty_monotone; eauto. lia. eapply closed_qual_monotone; eauto. lia.
+  - eapply qs_cong; eauto. rewrite length_app. eapply closed_qual_monotone; eauto. lia.
   - eapply qs_trans; eauto.
 Qed.
 
@@ -1508,14 +1507,14 @@ Proof. intros Γ1 Γ2 Σ T1 d1 T2 d2  Hstp T'. remember (Γ1 ++ Γ2)  as Γ. gen
     subst. intuition. inversion H0; inversion H; subst. apply qstp_closed in H1 as Hcl. intuition.
     constructor; try fold splice_ty. 1-2: constructor.
     1,2,5,6 : apply splice_qual_closed'. 5-8 : apply splice_ty_closed'.
-    1-8: rewrite app_length in *; rewrite splice_tenv_length in *; auto.
+    1-8: rewrite length_app in *; rewrite splice_tenv_length in *; auto.
     apply weaken_qstp_gen. auto.
     specialize (IHHstp1 Γ1). intuition.
     specialize (IHHstp2 ((false,T3, d3) :: (true,(TFun d1 d2 T1 T2), {♦}) :: Γ1)). intuition.
     repeat rewrite <- splice_ty_open'. repeat rewrite <- splice_qual_open'. simpl in H5.
     repeat rewrite @open_ty'_len with (Γ:=(Γ1 ↑ᴳ ‖Γ2‖) ++ Γ2) (Γ':=Γ1++Γ2).
     repeat rewrite @openq'_len with (Γ:=(Γ1 ↑ᴳ ‖Γ2‖) ++ Γ2) (Γ':=Γ1++Γ2). rewrite splice_set_empty in H5. auto.
-    all: repeat rewrite app_length; rewrite splice_tenv_length; auto.
+    all: repeat rewrite length_app; rewrite splice_tenv_length; auto.
   (* - intros. specialize (IHHstp1 Γ1). specialize (IHHstp2 Γ1). intuition.
     eapply s_trans; eauto. *)
 Qed.
@@ -1540,7 +1539,7 @@ Lemma weaken_stp_store : forall {Σ Γ T1 d1 T2 d2}, stp Γ Σ T1 d1 T2 d2 -> fo
 Proof. intros Σ Γ T1 d1 T2 d2 HSTP. induction HSTP; intros.
   + constructor. apply weaken_qstp_store. auto.
   + constructor; auto. all : apply weaken_qstp_store; auto.
-  + constructor; auto. 1,2 : rewrite app_length; eapply closed_ty_monotone; eauto; lia.
+  + constructor; auto. 1,2 : rewrite length_app; eapply closed_ty_monotone; eauto; lia.
     apply weaken_qstp_store. auto.
   (* + specialize (IHHSTP1 Σ'). specialize (IHHSTP2 Σ'). eapply s_trans in IHHSTP2; eauto. *)
 Qed.
@@ -1561,7 +1560,7 @@ Lemma narrowing_qstp_gen : forall{Γ1 b U du Γ2 Σ d1 d2},
               qstp (Γ1 ++ (b,V,dv) :: Γ2) Σ d1 d2.
   intros Γ1 b U du Γ2 Σ d1 d2 HST Hb. remember (Γ1 ++ (b,U,du) :: Γ2) as Γ.
   generalize dependent Γ1; induction HST; intros; subst; intuition.
-  - constructor. auto. rewrite app_length in *. simpl in *. auto.
+  - constructor. auto. rewrite length_app in *. simpl in *. auto.
   - eapply qs_self; eauto. destruct (PeanoNat.Nat.lt_trichotomy f (‖Γ2‖)) as [Hlen | [Hlen | Hlen] ].
     * rewrite indexr_skips. rewrite indexr_skips in H.
       rewrite indexr_skip.  rewrite indexr_skip in H. eauto. all: simpl; lia.
@@ -1578,7 +1577,7 @@ Lemma narrowing_qstp_gen : forall{Γ1 b U du Γ2 Σ d1 d2},
       apply stp_qstp_inv in H3. eapply weaken_qstp'. eapply weaken_qstp. auto. auto.
     * eapply qs_qvar; eauto. rewrite indexr_skips'; auto. rewrite indexr_skips' in H. eauto.
       simpl. lia.
-  - eapply qs_cong; eauto. rewrite app_length in *. simpl in *. auto.
+  - eapply qs_cong; eauto. rewrite length_app in *. simpl in *. auto.
   - eapply qs_trans; eauto.
 Qed.
 
@@ -1589,11 +1588,11 @@ Proof. intros Γ1 b U du Γ2 Σ T1 d1 T2 d2 HST Hb. remember (Γ1 ++ (b,U,du) ::
   - subst. constructor. eapply narrowing_qstp_gen; eauto.
   - subst. constructor. 1,4,5 : eapply narrowing_qstp_gen; eauto. auto. auto.
   - rewrite HeqΓ in *. constructor.
-    subst. rewrite app_length in *. simpl in *. auto.
-    subst. rewrite app_length in *. simpl in *. auto.
+    subst. rewrite length_app in *. simpl in *. auto.
+    subst. rewrite length_app in *. simpl in *. auto.
     eapply narrowing_qstp_gen; subst; eauto. eapply IHHST1; eauto.
     unfold open_ty' in *. unfold openq' in *.
-    rewrite app_length in *. simpl in *.
+    rewrite length_app in *. simpl in *.
     repeat rewrite app_comm_cons.
     eapply IHHST2; eauto.
   (* - subst. specialize (IHHST1 Γ1).  specialize (IHHST2 Γ1). intuition.
@@ -1902,7 +1901,7 @@ Lemma weaken_gen : forall {t Γ1 Γ2 φ Σ T d},
   induction HT; intros; subst.
   - (* tunit *) simpl. rewrite splice_set_empty.
     constructor. eapply splice_qual_closed'.
-    rewrite app_length in *. rewrite splice_tenv_length. auto.
+    rewrite length_app in *. rewrite splice_tenv_length. auto.
     - (* t_var *) simpl.
     destruct (le_lt_dec (‖Γ2‖) x) eqn:Heq.
     * (* |Γ2| <= x < |Γ1|+|Γ2|*)
@@ -1911,7 +1910,7 @@ Lemma weaken_gen : forall {t Γ1 Γ2 φ Σ T d},
       erewrite <- splice_qual_just_fv_ge; eauto.
       rewrite subqual_splice_lr'. auto.
       eapply splice_qual_closed'.
-      rewrite app_length in *. rewrite splice_tenv_length. auto.
+      rewrite length_app in *. rewrite splice_tenv_length. auto.
       eapply splice_ty_closed''; eauto. eapply splice_qual_closed''; eauto.
     * (* |Γ2| > x *)
       rewrite indexr_skips in H; auto. rewrite splice_set_singleton_inv; auto.
@@ -1922,11 +1921,11 @@ Lemma weaken_gen : forall {t Γ1 Γ2 φ Σ T d},
       erewrite <- splice_qual_just_fv_lt; eauto.
       rewrite subqual_splice_lr'. auto.
       eapply splice_qual_closed'.
-      rewrite app_length in *. rewrite splice_tenv_length. auto.
+      rewrite length_app in *. rewrite splice_tenv_length. auto.
       erewrite splice_ty_id; eauto. eapply closed_ty_monotone; eauto. lia. auto.
-  - (* t_abs *) rewrite app_length in *. simpl. constructor; auto.
+  - (* t_abs *) rewrite length_app in *. simpl. constructor; auto.
     apply splice_closed'.
-    1-3: rewrite app_length; rewrite splice_tenv_length; simpl;
+    1-3: rewrite length_app; rewrite splice_tenv_length; simpl;
       replace (‖Γ1‖ + S (‖Γ2‖)) with (S (‖Γ1‖ + ‖Γ2‖)); eauto.
     inversion H0. subst. constructor. 1,2,5: apply splice_qual_closed; auto. 1,2 : apply splice_ty_closed; auto.
     rewrite subqual_splice_lr'. auto. rewrite <- not_fresh_splice_iff. auto.
@@ -1940,7 +1939,7 @@ Lemma weaken_gen : forall {t Γ1 Γ2 φ Σ T d},
     rewrite <- splice_open'. rewrite <- splice_ty_open'. rewrite <- splice_qual_open'.
     rewrite @open_tm'_len with (Γ':=(Γ1 ++ Γ2)). rewrite @open_ty'_len with (Γ':=(Γ1 ++ Γ2)).
     rewrite @openq'_len with (Γ':=(Γ1 ++ Γ2)).
-    apply IHHT; intuition. 1-4 : repeat rewrite app_length; rewrite splice_tenv_length; auto.
+    apply IHHT; intuition. 1-4 : repeat rewrite length_app; rewrite splice_tenv_length; auto.
     repeat rewrite splice_qual_lub_dist. rewrite splice_qual_fresh. simpl.
     f_equal. repeat rewrite splice_set_singleton_inc; try lia; repeat f_equal; lia.
     simpl. auto.
@@ -1964,7 +1963,7 @@ Lemma weaken_gen : forall {t Γ1 Γ2 φ Σ T d},
     replace ((d2 ↑ᵈ (‖ Γ2 ‖)) <~ᵈ ∅; ∅) with ((d2 <~ᵈ ∅; ∅) ↑ᵈ (‖ Γ2 ‖)); auto.
     rewrite splice_qual_open''. f_equal; auto.
   - (* t_loc *) simpl. rewrite splice_qual_qlub_dist. simpl. rewrite splice_set_empty. apply t_loc. eapply splice_qual_closed'.
-    rewrite app_length in *. rewrite splice_tenv_length. auto.
+    rewrite length_app in *. rewrite splice_tenv_length. auto.
     erewrite splice_ty_id; eauto. erewrite splice_qual_id; eauto. eapply closed_qual_monotone; eauto. lia. eapply closed_ty_monotone; eauto. lia.
     erewrite splice_ty_id; eauto. eapply closed_ty_monotone; eauto. lia.
     erewrite splice_qual_id; eauto. eapply closed_qual_monotone; eauto. lia.
@@ -2060,37 +2059,37 @@ Lemma narrowing_gen : forall {t Γ1 b U du Γ2 φ Σ T d},
   generalize dependent Γ1. generalize dependent U. generalize dependent du. generalize dependent Γ2.
   induction HT; intros; subst.
   - econstructor; eauto.
-    repeat rewrite app_length in *; simpl in *; auto.
-  - repeat rewrite app_length in *; simpl in *; auto.
+    repeat rewrite length_app in *; simpl in *; auto.
+  - repeat rewrite length_app in *; simpl in *; auto.
     destruct (PeanoNat.Nat.lt_trichotomy x (‖Γ2‖)) as [Hlen | [Hlen | Hlen] ].
     * apply t_var with (b:=b0) (d:=d); auto. rewrite <- indexr_insert_lt; auto. rewrite <- indexr_insert_lt in H; auto.
-      repeat rewrite app_length in *; simpl in *; auto.
+      repeat rewrite length_app in *; simpl in *; auto.
     * subst. rewrite indexr_insert in H. inversion H. subst.
       apply t_sub with (T1:=V) (d1:=$!‖Γ2‖); auto. apply t_var with (b:=b0) (d:=dv).
       rewrite indexr_insert. auto. destruct φ. simpl. auto.
-      repeat rewrite app_length in *; simpl in *; auto.
+      repeat rewrite length_app in *; simpl in *; auto.
       1,2 : apply stp_closed in H4; intuition. eapply closed_ty_monotone; eauto. eapply closed_qual_monotone; eauto.
       eapply stp_shrink_var; eauto. eapply weaken_stp'; eauto. eapply weaken_stp; eauto.
-      replace Γ2 with (Γ2 ++ []). eapply weaken_stp'; eauto. rewrite app_nil_r. auto. rewrite app_length. simpl. lia.
+      replace Γ2 with (Γ2 ++ []). eapply weaken_stp'; eauto. rewrite app_nil_r. auto. rewrite length_app. simpl. lia.
     * apply t_var with (b:=b0) (d:=d); auto. destruct x. lia. rewrite <- indexr_insert_ge; try lia.
       rewrite <- indexr_insert_ge in H; try lia. auto.
-      repeat rewrite app_length in *; simpl in *; auto.
-  - repeat rewrite app_length in *; simpl in *; auto.
-    constructor; auto. 1-3 : rewrite app_length in *; simpl in *; auto.
+      repeat rewrite length_app in *; simpl in *; auto.
+  - repeat rewrite length_app in *; simpl in *; auto.
+    constructor; auto. 1-3 : rewrite length_app in *; simpl in *; auto.
     rewrite @open_tm'_len with (Γ' := (Γ1 ++ (b,U, du) :: Γ2)).
     rewrite @open_ty'_len with (Γ' := (Γ1 ++ (b,U, du) :: Γ2)).
     rewrite @openq'_len with (Γ' := (Γ1 ++ (b,U, du) :: Γ2)).
-    2-4 : repeat rewrite app_length; simpl; auto.
-    rewrite app_length. simpl.
+    2-4 : repeat rewrite length_app; simpl; auto.
+    rewrite length_app. simpl.
     rewrite app_comm_cons. rewrite app_comm_cons.
     eapply IHHT; eauto. simpl. auto.
   - econstructor; eauto.
   - eapply t_app_fresh; eauto.
-    repeat rewrite app_length in *; simpl in *; auto.
+    repeat rewrite length_app in *; simpl in *; auto.
     all: eapply narrowing_saturated; eauto.
   - econstructor; eauto.
-    repeat rewrite app_length in *; simpl in *; auto.
-  - econstructor; eauto. repeat rewrite app_length in *; simpl in *; auto.
+    repeat rewrite length_app in *; simpl in *; auto.
+  - econstructor; eauto. repeat rewrite length_app in *; simpl in *; auto.
   - econstructor; eauto.
   - econstructor; eauto.
   - eapply t_sub; eauto. eapply narrowing_stp_gen; eauto.
@@ -2139,7 +2138,7 @@ Lemma CtxOK_weaken_flt : forall {Γ φ Σ σ}, CtxOK Γ φ Σ σ -> forall {φ'}
 Qed.
 
 Lemma subst1_tenv_length : forall {v q Γ}, ‖ { v |-> q }ᴳ Γ ‖ = ‖Γ‖.
-  intros. unfold subst_tenv. rewrite map_length. auto.
+  intros. unfold subst_tenv. rewrite length_map. auto.
 Qed.
 
 Lemma subst_tenv_length : forall {v q q' Γ}, ‖ { v |-> q ; q' }ᴳ Γ ‖ = ‖Γ‖.
@@ -2472,7 +2471,7 @@ Lemma closed_qual_subst1' : forall {Γ0 X l df φ b},
     closed_qual b (‖ Γ0 ++ [X] ‖) l φ ->
     closed_qual b (‖ {0 |-> df }ᴳ Γ0 ‖) l ({0 |-> df }ᵈ φ).
   intros. repeat eapply closed_qual_subst1; eauto. rewrite subst1_tenv_length.
-  rewrite app_length in *. simpl in *. replace (‖Γ0‖ + 1) with (S (‖Γ0‖)) in H0.
+  rewrite length_app in *. simpl in *. replace (‖Γ0‖ + 1) with (S (‖Γ0‖)) in H0.
   auto. lia.
 Qed.
 
@@ -2481,7 +2480,7 @@ Lemma closed_tm_subst1' : forall {Γ0 X l df tx t b},
     closed_tm b (‖ Γ0 ++ [X] ‖) l t ->
     closed_tm b (‖ {0 |-> df }ᴳ Γ0 ‖) l ({0 |-> tx }ᵗ t).
   intros. repeat eapply closed_tm_subst1; eauto. rewrite subst1_tenv_length.
-  rewrite app_length in *. simpl in *. replace (‖Γ0‖ + 1) with (S (‖Γ0‖)) in H0.
+  rewrite length_app in *. simpl in *. replace (‖Γ0‖ + 1) with (S (‖Γ0‖)) in H0.
   auto. lia.
 Qed.
 
@@ -2490,7 +2489,7 @@ Lemma closed_ty_subst1' : forall {Γ0 X l df T b},
     closed_ty b (‖ Γ0 ++ [X] ‖) l T ->
     closed_ty b (‖ {0 |-> df }ᴳ Γ0 ‖) l ({0 |-> df }ᵀ T).
   intros. repeat eapply closed_ty_subst1; eauto. rewrite subst1_tenv_length.
-  rewrite app_length in *. simpl in *. replace (‖Γ0‖ + 1) with (S (‖Γ0‖)) in H0.
+  rewrite length_app in *. simpl in *. replace (‖Γ0‖ + 1) with (S (‖Γ0‖)) in H0.
   auto. lia.
 Qed.
 
@@ -2821,7 +2820,7 @@ Lemma subst_stp : forall{T1 T2},
     eapply subst_qstp; eauto. eapply IHHS1; eauto.
     unfold open_ty' in *. unfold open_ty in *.
     unfold openq' in *. unfold openq in *.
-    rewrite app_length in *. rewrite subst1_tenv_length. simpl in *.
+    rewrite length_app in *. rewrite subst1_tenv_length. simpl in *.
     replace (‖Γ0‖ + 1) with (S (‖Γ0‖)) in *; try lia.
     specialize (IHHS2 Tf df ((false, T3, d3) :: (true, TFun d1 d2 T1 T2, {♦}) :: Γ0)). intuition. rename H4 into IHHS2. simpl in IHHS2.
     rewrite mem_empty in IHHS2. rewrite unsplice_set_empty in IHHS2.
@@ -2905,13 +2904,13 @@ Lemma substitution_gen :
     (* 2. reason about opening and subst, apply IH *)
     unfold open_tm' in *. unfold open_ty' in *. unfold open_ty in *.
     unfold openq' in *. unfold openq in *.
-    rewrite app_length in IHHT. rewrite subst1_tenv_length. simpl in *.
+    rewrite length_app in IHHT. rewrite subst1_tenv_length. simpl in *.
     replace (‖Γ0‖ + 1) with (S (‖Γ0‖)) in IHHT; try lia.
     erewrite <- open_subst1_tm_comm in IHHT; eauto. erewrite <- open_subst1_tm_comm in IHHT; eauto.
     erewrite <- open_subst1_ty_comm in IHHT; eauto. erewrite <- open_subst1_ty_comm in IHHT; eauto.
     erewrite <- open_subst1_qual_comm in IHHT; eauto. erewrite <- open_subst1_qual_comm in IHHT; eauto.
     subst. rewrite subst1_qlub_dist. repeat rewrite subst1_qlub_dist. f_equal.
-    repeat rewrite <- subst1_just_fv. rewrite subst1_fresh_id. auto. rewrite app_length. simpl. lia.
+    repeat rewrite <- subst1_just_fv. rewrite subst1_fresh_id. auto. rewrite length_app. simpl. lia.
   - (* t_app *) intuition. rename H7 into IHHT1. rename H6 into IHHT2. simpl.
     replace ({ 0 |-> dx' }ᵈ (openq df d1 d2)) with
                (openq ({ 0 |-> dx' }ᵈ df) ({ 0 |-> dx' }ᵈ d1) ({ 0 |-> dx' }ᵈ d2)).

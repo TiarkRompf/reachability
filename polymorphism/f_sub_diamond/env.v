@@ -1,5 +1,4 @@
-Require Export Arith.EqNat.
-Require Export Arith.Le.
+Require Export PeanoNat.
 Require Import Coq.Arith.Arith.
 Require Import Coq.Program.Equality.
 Require Import Coq.Lists.List.
@@ -59,7 +58,7 @@ Qed.
 Lemma indexr_skips : forall {A} {xs' xs : list A} {i}, i < length xs -> indexr i (xs' ++ xs) = indexr i xs.
   induction xs'; intros; intuition.
   replace ((a :: xs') ++ xs) with (a :: (xs' ++ xs)).
-  rewrite indexr_skip. eauto. rewrite app_length. lia. auto.
+  rewrite indexr_skip. eauto. rewrite length_app. lia. auto.
 Qed.
 
 Lemma indexr_var_some :  forall {A} {xs : list A} {i}, (exists x, indexr i xs = Some x) <-> i < length xs.
@@ -83,11 +82,11 @@ Lemma indexr_var_same: forall {A}{xs' xs: list A}{i}{v X X' : A}, Nat.eqb i (len
   indexr i (xs' ++ X :: xs) =  Some v -> indexr i (xs' ++ X' :: xs) =  Some v.
 Proof. intros ? ? ? ? ? ? ? E H.  induction xs'.
   - simpl. rewrite E.  simpl in H. rewrite E in H. apply H.
-  - simpl. rewrite app_length. simpl.
+  - simpl. rewrite length_app. simpl.
     destruct (Nat.eqb i  ((length xs')  + S (length xs))) eqn: E'.
-      simpl in H. rewrite app_length in H. simpl in H. rewrite E' in H.
+      simpl in H. rewrite length_app in H. simpl in H. rewrite E' in H.
     rewrite H. reflexivity.
-    simpl in H. rewrite app_length in H. simpl in H. rewrite E' in H.
+    simpl in H. rewrite length_app in H. simpl in H. rewrite E' in H.
     rewrite IHxs'. reflexivity. assumption.
   Qed.
 
@@ -114,7 +113,7 @@ Lemma indexr_insert_ge : forall {A} {xs xs' : list A} {x} {y}, x >= (length xs')
     replace ((a :: xs) ++ y :: xs') with (a :: (xs ++ y :: xs')); auto.
     simpl. replace (length (xs ++ y :: xs')) with (S (length (xs ++ xs'))).
     destruct (Nat.eqb x (length (xs ++ xs'))) eqn:Heq; auto.
-    repeat rewrite app_length. simpl. lia.
+    repeat rewrite length_app. simpl. lia.
 Qed.
 
 Lemma indexr_insert_lt : forall {A} {xs xs' : list A} {x} {y}, x < (length xs') -> indexr x (xs ++ xs') = indexr x (xs ++ y :: xs').
@@ -128,7 +127,7 @@ Qed.
 Lemma indexr_insert:  forall {A} {xs xs' : list A} {y}, indexr (length xs') (xs ++ y :: xs') = Some y.
   intros. induction xs.
   - replace ([] ++ y :: xs') with (y :: xs'); auto. apply indexr_head.
-  - simpl. rewrite IHxs. rewrite app_length. simpl.
+  - simpl. rewrite IHxs. rewrite length_app. simpl.
     destruct (PeanoNat.Nat.eqb (length xs') (length xs + S (length xs'))) eqn:Heq; auto.
     apply Nat.eqb_eq in Heq. lia.
 Qed.
@@ -141,7 +140,7 @@ Proof.
   induction xs.
   - simpl. rewrite Nat.eqb_refl. reflexivity.
   - simpl.
-    rewrite app_length. simpl. rewrite <- plus_n_Sm. rewrite <- plus_Sn_m.
+    rewrite length_app. simpl. rewrite <- plus_n_Sm. rewrite <- plus_Sn_m.
     replace (length xs' =? S (length xs) + length xs') with false.
     assumption. symmetry. rewrite Nat.eqb_neq. lia.
 Qed.

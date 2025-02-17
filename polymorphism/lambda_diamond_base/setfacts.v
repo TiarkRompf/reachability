@@ -1,5 +1,4 @@
-Require Export Arith.EqNat.
-Require Export Arith.Le.
+Require Export PeanoNat.
 Require Import Coq.Program.Equality.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Arith.Arith.

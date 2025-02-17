@@ -1,3 +1,4 @@
+Set Warnings "-intuition-auto-with-star".
 Require Import Coq.Lists.List.
 Require Import Psatz.
 Require Import Coq.Arith.Compare_dec.

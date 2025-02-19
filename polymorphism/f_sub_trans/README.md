@@ -24,7 +24,7 @@ closure more precise by providing an explicit mechanism to computationally
 derive the transitive closure of a qualifier.
 
 This version should be considered as the reference mechanization of the
-$F_{<:}\diamond$-calculus from POPL '24.
+$F_{<:}^\diamond$-calculus from POPL '24.
 
 ## File Index
 

@@ -19,7 +19,7 @@ graph TD
 	Base-->Fsub-Trans
 ```
 
-[`Fsub-Trans`](f_sub_trans) should be considered as the reference mechanization of the $F_{<:}\diamond$-calculus from POPL '24.
+[`Fsub-Trans`](f_sub_trans) should be considered as the reference mechanization of the $F_{<:}^\diamond$-calculus from POPL '24.
 
 ## References
 

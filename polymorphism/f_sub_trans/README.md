@@ -42,4 +42,4 @@ This version comes with a slightly altered utility structure, as described below
 * [`env.v`](env.v) -- Environments and operations.
 * [`vars.v`](vars.v) -- Variables.
 * [`tactics.v`](tactics.v) -- Misc. tactics.
-* [`f_sub_trans.v`](f_sub_trans.v) -- The $\mathsf{F}_{<:}^{\diamond}$-calculus: definitions and metatheory (type safety theorem and preservation of separation).
+* [`f_sub_trans.v`](f_sub_trans.v) -- The $\mathsf{F}_{<:}^{\diamond}$-calculus: definitions and metatheory (type safety theorem, preservation of separation, and progress/preservation of parallel reductions).

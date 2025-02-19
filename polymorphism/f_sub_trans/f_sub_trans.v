@@ -1,15 +1,3 @@
-(****************************************
-*  This version merges f_sub_trans and _fr2 with the following features/changes:
-   - updated Ctx_OK definition, using a filter
-   - store type: list (option value)
-   - generalized closedness condition for referent type
-   - s_ref imposes invariance by bidirectional subtyping constraints
-   - generalizes filters in the top-level theorems (instead of DOM(Sigma))
-   - removes the freshness requirement of filters from the top-level safety theorem
-   - proves the additioanl parallel progress/preservation theorems
-   - uses the proper subtyping transitivity rule
- ****************************************)
-
 Require Export Arith.EqNat.
 Require Export Arith.Le.
 Require Import Coq.Arith.Arith.
@@ -338,7 +326,6 @@ Inductive wf_qenv {p : Type} `{qenv p} : (env p) -> Prop :=
 (*****************
 *  closed_qenv  *
 *****************)
-(* TODO: is this a good definition? Can this be subsumed by closed_qenv_qn? <2024-01-30, David Deng> *)
 
 Definition closed_qenv {p : Type} `{qenv p} (b f l : nat) (E : env p) : Prop :=
   forall x a, indexr x E = Some a -> closed_Qual b f l (qenv_q a) ↑.
@@ -3896,7 +3883,7 @@ Lemma subst1_qand_saturated' : forall {df d1 bd sx Tx dx dx'} {φ} {Γ : tenv} {
   unfold_q. ndestruct (fvs 0); ndestruct (fvs0 0); clift.
   - apply Q_lift_eq; Qcrush.
   - (* 0 ∈ df, 0 ∉ d1 *)
-    apply qenv_saturated_q''_0 in H5; auto. apply Q_lift_eq; Qcrush. destruct (H16 x); intuition. destruct (H21 x); intuition. (* TODO: bake into Qcrush automation <2024-04-02, David Deng> *)
+    apply qenv_saturated_q''_0 in H5; auto. apply Q_lift_eq; Qcrush. destruct (H16 x); intuition. destruct (H21 x); intuition.
   - (* 0 ∉ df, 0 ∈ d1, analogous to the previous case *)
     apply qenv_saturated_q''_0 in H4; auto. apply Q_lift_eq; Qcrush. destruct (H14 x); intuition. destruct (H20 x); intuition.
 Qed.
@@ -4297,8 +4284,8 @@ intros. generalize dependent d. induction Σ; intros; simpl; auto. ndestruct (ql
     rewrite subst1_env_length in *. clift. destruct a. simpl. rewrite subst1_qor_dist. rewrite <- IHΣ. auto. eapply wf_senv_shrink; eauto. unfold senv_saturated, qenv_saturated_q in *. intros. eapply H0 in H3. eauto. apply indexr_extend1; auto.
   - ndestruct (qlocs dx' (‖ Σ ‖)).
     + apply qenv_saturated_iff in H0 as H0'. autounfold in H0'. destruct a. simpl in *. rewrite subst1_env_length. ndestruct (qfvs d 0).
-      -- assert (N_lift (qlocs ({0 |-> dx' }ᵈ d)) (‖ Σ ‖)). { rewrite Q_lift_qn. rewrite Q_lift_subst_qual. Qcrush. } inversion H. subst. erewrite @subst1_qual_id with (q:=q); eauto. unfold N_lift in H2. rewrite H2 in H0'. clift. rewrite <- IHΣ. rewrite <- H0'. assert (N_lift (qfvs (q_trans_one Σ d)) 0). { erewrite N_lift_trans_one; eauto. unfold N_trans_one. left. auto. } apply Q_lift_eq. rewrite Q_lift_or. rewrite Q_lift_subst_qual. Qcrush. (* TODO: too slow? <2024-01-04, David Deng> *)
-eapply wf_senv_shrink; eauto. eapply qenv_saturated_q_shrink; eauto.
+      -- assert (N_lift (qlocs ({0 |-> dx' }ᵈ d)) (‖ Σ ‖)). { rewrite Q_lift_qn. rewrite Q_lift_subst_qual. Qcrush. } inversion H. subst. erewrite @subst1_qual_id with (q:=q); eauto. unfold N_lift in H2. rewrite H2 in H0'. clift. rewrite <- IHΣ. rewrite <- H0'. assert (N_lift (qfvs (q_trans_one Σ d)) 0). { erewrite N_lift_trans_one; eauto. unfold N_trans_one. left. auto. } apply Q_lift_eq. rewrite Q_lift_or. rewrite Q_lift_subst_qual. Qcrush.
+         eapply wf_senv_shrink; eauto. eapply qenv_saturated_q_shrink; eauto.
       -- assert (~N_lift (qlocs ({0 |-> dx' }ᵈ d)) (‖ Σ ‖)). { rewrite Q_lift_qn. rewrite Q_lift_subst_qual. Qcrush. } clift. rewrite IHΣ. auto.
 eapply wf_senv_shrink; eauto. eapply qenv_saturated_q_shrink; eauto.
     + assert (~N_lift (qlocs ({0 |-> dx' }ᵈ d)) (‖ Σ ‖)). { rewrite Q_lift_qn. rewrite Q_lift_subst_qual. unfold not. intros. Qcrush. } rewrite subst1_env_length. clift. rewrite IHΣ. auto.
@@ -4500,7 +4487,6 @@ Lemma q_trans_fv : forall Γ Σ bd fr T q,
 intros. unfold q_trans. rewrite q_trans_tenv_fv; auto. unfold q_trans_senv. rewrite <- q_trans''_or_dist. rewrite q_trans''_gt_id with (q:=$! (‖ Γ ‖)); auto. intros. Qcrush.
 Qed.
 
-(* TODO: define and replace with wf_qtenv <2024-02-01, David Deng> *)
 Lemma wf_tenv_closed_subst : forall Γ Σ a bd b T q,
   wf_tenv (Γ ++ [a]) Σ ->
   closed_ty 0 0 (‖ Σ ‖) T ->

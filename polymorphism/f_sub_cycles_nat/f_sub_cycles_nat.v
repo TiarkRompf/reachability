@@ -410,13 +410,13 @@ Inductive has_type : tenv -> qual -> senv -> tm -> ty -> qual -> Prop :=
     has_type Γ φ Σ &l (TSRef q T) &!l
 | t_ref: forall Γ φ Σ T t d1,
     has_type Γ φ Σ t T d1 ->
-    closed_ty 0 0 (‖Σ‖) T ->
+    closed_ty 0 (‖Γ‖) (‖Σ‖) T ->
     ♦∉ d1 ->
     has_type Γ φ Σ (tref t) (TRef d1 T) ({♦})
 
 | t_sref: forall Γ φ Σ T t d1,
     has_type Γ φ Σ t T ([[0 ~> ∅ ]]ᵈ d1) ->
-    closed_ty 0 0 (‖Σ‖) T ->
+    closed_ty 0 (‖Γ‖) (‖Σ‖) T ->
     ♦∉ d1 ->
     has_type Γ φ Σ (tsref t) (TSRef d1 T) ({♦})
 
@@ -3271,11 +3271,11 @@ repeat rewrite splice_q_trans_tenv_comm. auto.
     Qcrush. Qcrush. apply Q_lift_eq; Qcrush.
   - (* t_ref *) simpl in *. specialize (IHHT wfs Γ2 wft Γ1). intuition. remember (a, b1, b0, b) as X.
     specialize (H1 X). rewrite splice_qual_fresh. apply t_ref; auto.
-    erewrite splice_ty_id; auto. eapply closed_ty_monotone; eauto. lia.
+    eapply splice_ty_closed'. eapply closed_ty_monotone; eauto. repeat rewrite app_length. rewrite splice_env_length; eauto.
   - (* t_sref *) simpl in *. specialize (IHHT wfs Γ2 wft Γ1). intuition. remember (a, b1, b0, b) as X.
     specialize (H1 X). rewrite splice_qual_fresh. apply t_sref; auto.
     erewrite <- @splice_qual_id with (d:=∅); eauto.
-    rewrite <- splice_qual_open'''; eauto. erewrite splice_ty_id; eauto. eapply closed_ty_monotone; eauto. lia.
+    rewrite <- splice_qual_open'''; eauto. eapply splice_ty_closed'. eapply closed_ty_monotone; eauto. repeat rewrite app_length. rewrite splice_env_length; eauto.
   - (* t_deref *) simpl. econstructor; eauto. apply subqual_splice_lr'. auto.
   - (* t_deref *) simpl. rewrite splice_qual_open'''. eapply t_sderef; eauto. rewrite <- splice_qual_open'''. eapply subqual_splice_lr. auto.
   - (* t_assign *) simpl. specialize (IHHT1 wfs Γ2 wft Γ1). specialize (IHHT2 wfs Γ2 wft Γ1). intuition.
@@ -3536,8 +3536,8 @@ Proof. intros t Γ1 bd b U du Γ2 φ Σ T d HT Hb. remember (Γ1 ++ (bd, b, U, d
     1,2: apply q_trans_tenv_narrowing_subq'; eauto using has_type_filter.
   - econstructor; eauto. repeat rewrite app_length in *; simpl in *; auto.
   - econstructor; eauto. repeat rewrite app_length in *; simpl in *; auto.
-  - econstructor; eauto.
-  - econstructor; eauto.
+  - econstructor; eauto. repeat rewrite app_length in *; simpl in *; auto.
+  - econstructor; eauto. repeat rewrite app_length in *; simpl in *; auto.
   - econstructor; eauto.
   - eapply t_sderef; eauto.
   - econstructor; eauto.
@@ -5793,10 +5793,10 @@ eapply closed_qual_subst1; eauto 3. eapply closed_Qual_q_trans''_monotone; eauto
     erewrite <- @subst1_qual_id with (q:=(&!l)); eauto. eapply subst_qual_subqual_monotone; eauto.
     all : apply indexr_var_some' in H3; eapply just_loc_closed; eauto.
   - (* t_ref *) rewrite subst1_fresh_id. simpl. apply t_ref; auto.
-    erewrite subst1_ty_id; eauto. apply subst1_non_fresh; eauto.
+    eapply closed_ty_subst1; eauto. eapply closed_ty_monotone; eauto. rewrite app_length, subst1_env_length. simpl. lia. apply subst1_non_fresh; eauto.
   - (* t_sref *)  rewrite subst1_fresh_id. simpl.
     apply t_sref; auto. erewrite <- @subst1_qual_id with (q:=∅); auto. erewrite <- subst1_open_qual_comm; eauto.
-Qcrush. erewrite subst1_ty_id; eauto. apply subst1_non_fresh; eauto.
+    eapply closed_ty_subst1; eauto. eapply closed_ty_monotone; eauto. rewrite app_length, subst1_env_length. simpl. lia. apply subst1_non_fresh; eauto.
   - (* t_deref *) simpl. apply t_deref with (d := { 0 |-> dx' }ᵈ d); auto.
     apply subst1_non_fresh; eauto. apply subst_qual_subqual_monotone. auto.
   - (* t_sderef *) simpl. erewrite subst1_open_qual_comm; eauto. apply t_sderef with (d := { 0 |-> dx' }ᵈ d); auto.
@@ -6571,10 +6571,10 @@ eapply closed_qual_subst1; eauto 3. eapply closed_Qual_q_trans''_monotone; eauto
     erewrite <- @subst1_qual_id with (q:=(&!l)); eauto. eapply subst_qual_subqual_monotone; eauto.
     all : apply indexr_var_some' in H0; eapply just_loc_closed; eauto.
   - (* t_ref *) rewrite subst1_fresh_id. simpl. apply t_ref; auto.
-    eapply closed_ty_subst1; eauto. eapply closed_ty_monotone; eauto. apply subst1_non_fresh; eauto.
-  - (* t_ref *) rewrite subst1_fresh_id. simpl. apply t_sref; eauto.
+    eapply closed_ty_subst1; eauto. eapply closed_ty_monotone; eauto. rewrite app_length, subst1_env_length. simpl. lia. apply subst1_non_fresh; eauto.
+  - (* t_sref *) rewrite subst1_fresh_id. simpl. apply t_sref; eauto.
     replace (∅) with ({0 |-> dx' }ᵈ ∅) by auto; unfold openq. repeat erewrite <- subst1_open_qual_comm; eauto.
-    eapply closed_ty_subst1; eauto. eapply closed_ty_monotone; eauto.
+    eapply closed_ty_subst1; eauto. eapply closed_ty_monotone; eauto. rewrite app_length, subst1_env_length. simpl. lia.
   - (* t_deref *) simpl. apply t_deref with (d := { 0 |-> dx' }ᵈ d); auto.
     apply subst1_non_fresh; eauto. apply subst_qual_subqual_monotone. auto.
   - (* t_sderef *) simpl. erewrite subst1_open_qual_comm; eauto. apply t_sderef with (d := { 0 |-> dx' }ᵈ d); auto.

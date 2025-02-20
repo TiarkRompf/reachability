@@ -1,4 +1,4 @@
-# The $\mathsf{F}_{<:}^{\circlearrowright}$-Calculus: Bounded type-and-reachability polymorphism with cyclic references and natural numbers
+# The $\mathsf{F}_{<:}^{\circ}$-Calculus: Bounded type-and-reachability polymorphism with cyclic references and natural numbers
 
 ## Compilation
 
@@ -14,12 +14,11 @@ Compatibility tested with Coq `8.17.0`.
 
 ## Variant
 
-This version extends the [base](lambda_diamond_base)  
-$\lambda^{\diamond}$-calculus with **support for cyclic references** and **natural numbers**. It introduces new mechanisms to **construct and reason about cyclic reference types**, while still maintaining **bounded type-and-qualifier polymorphism**, akin to System $F_{<:}$.
+$\lambda^{\diamond}$-calculus with support for cyclic references and natural numbers. It introduces new mechanisms to construct and reason about cyclic reference types, while still maintaining bounded type-and-qualifier polymorphism, akin to System $F_{<:}$.
 
-As a variant of [fsub](f_sub_diamond), which approximates **transitive closure** using saturation, this version provides an **explicit computational mechanism** for transitive closure in the presence of **cyclic references**. This enables precise qualifier tracking, allowing safe reference cycles while preserving type soundness.
+Based on [fsub-trans](../f_sub_trans), this version inherit its explicit computational mechanism for transitive closure in the presence of **cyclic references**. This enables precise qualifier tracking, allowing references to store values capturing the reference itself, while preserving type soundness.
 
-This version should be considered as the **reference mechanization of the $\mathsf{F}_{<:}^{\circlearrowright}$-calculus**, supporting both **cyclic references and natural numbers**.
+This version should be considered as the reference mechanization of the $\mathsf{F}_{<:}^{\circ}$-calculus, supporting both cyclic references and natural numbers.
 
 ## File Index
 
@@ -30,7 +29,7 @@ This version comes with a slightly altered utility structure, as described below
 - [`boolean.v`](boolean.v) — Reflection on booleans, mainly used to express qualifier freshness.
 - [`env.v`](env.v) — Environments and operations.
 - [`examples.v`](examples.v) — Example proofs demonstrating recursion enabled by cyclic references and numeric computations.
-- [`f_sub_cycles_nat.v`](f_sub_cycles_nat.v) — The $\mathsf{F}_{<:}^{\circlearrowright}$-calculus: definitions and metatheory (type safety theorem, preservation of separation, and progress/preservation of parallel reductions).
+- [`f_sub_cycles_nat.v`](f_sub_cycles_nat.v) — The $\mathsf{F}_{<:}^{\circ}$-calculus: definitions and metatheory (type safety theorem, preservation of separation, and progress/preservation of parallel reductions).
 - [`lang.v`](lang.v) — Term and type definitions.
 - [`nats.v`](nats.v) — Functional set implementation for natural numbers.
 - [`qenv.v`](qenv.v) — A generic environment supporting transitive closure lookup.

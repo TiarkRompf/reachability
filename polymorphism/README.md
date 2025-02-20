@@ -19,7 +19,7 @@ graph TD
     end
     Base-->Fsub
 	Base-->Fsub-Trans
-	Trans-->Fsub-Cycles-Nat
+	Fsub-Trans-->Fsub-Cycles-Nat
 ```
 
 [`Fsub-Trans`](f_sub_trans) should be considered as the reference mechanization of the $F_{<:}^\diamond$-calculus from POPL '24.

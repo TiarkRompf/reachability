@@ -33,9 +33,7 @@ This version comes with a slightly altered utility structure, as described below
 ### Main Files
 
 * [`boolean.v`](boolean.v) -- Reflections on boolean, mainly used to express qualifier freshness
-* [`lang.v`](lang.v) -- Term, type definition
 * [`nats.v`](nats.v) -- Functional set implementation
-* [`qenv.v`](qenv.v) -- A generic environment supporting transitive closure lookup
 * [`qualifiers.v`](qualifiers.v) -- Main lemmas for properties on qualifiers
 * [`qualifiers_base.v`](qualifiers_base.v) -- Qualifier structure implementation and basic reflection lemmas
 * [`qualifiers_slow.v`](qualifiers_slow.v) -- Qualifier lemmas that take more time to compile

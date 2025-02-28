@@ -18,6 +18,8 @@ Reachability types are a new take on modeling lifetimes and sharing in high-leve
 
 * [`checking`](https://github.com/TiarkRompf/reachability/tree/main/checking/) -- Bidirectional type system $\lambda^\diamond_R$ with decidable type checking/inference, including refined subtyping for self-references [5]
 
+* [`cycles`](https://github.com/TiarkRompf/reachability/tree/main/cycles/) -- Bounded type-and-reachability polymorphism with cyclic references and natural numbers.
+
 ## Prototype Implementations
 
 * Interactive [prototype](http://tiarkrompf.github.io/notes/?/graph-ir/) for [1],

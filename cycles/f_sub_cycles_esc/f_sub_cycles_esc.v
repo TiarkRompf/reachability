@@ -999,6 +999,20 @@ rewrite <- Q_lift_qn. erewrite N_lift_trans_one; eauto. unfold N_trans_one. righ
               Ex. exists x3. intuition. rewrite <- Q_lift_qn. erewrite N_lift_trans_one; eauto. unfold N_trans_one. right. exists x1. intuition. exists x2. intuition. exists x4. intuition. inversion H4. subst. auto.
 Qed.
 
+Definition qenv_saturated {p : Type} `{qenv p} (E : env p) (q : qual) :=
+  forall x a,
+  qenv_Qn q↑ x ->
+  indexr x E = Some a ->
+  (qenv_q a) ⊑↑ q.
+#[global] Hint Unfold qenv_saturated : core.
+
+Lemma qenv_saturated_iff : forall {p : Type} `{qenv p} (E : env p) (q : qual),
+  qenv_saturated E q <-> qenv_saturated_q'' E q.
+intros. unfold qenv_saturated, qenv_saturated_q''. split; intros.
+- induction E. auto. simpl. ndestruct (qenv_qn q (‖ E ‖)). rewrite IHE. specialize (H0 (‖ E ‖) a). rewrite indexr_head in H0. pose proof qenv_qn_prop. erewrite Q_lift_qn in H1; eauto. intuition. apply Q_lift_eq. Qcrush. intros. specialize (H0 x a0). intuition. rewrite indexr_extend1 in H3. intuition eauto. apply IHE. intros. eapply H0; eauto. rewrite indexr_extend1 in H3. intuition eauto.
+- generalize dependent x. generalize dependent a. generalize dependent q. induction E; intros. discriminate. simpl in H0. ndestruct (qenv_qn q (‖ E ‖)). bdestruct (x =? (‖ E ‖)). subst. rewrite indexr_head in H2. inversion H2. subst. rewrite <- H0. Qcrush. eapply IHE; eauto. apply Q_lift_eq. assert ((q_trans_one E q) ⊑↑ q). rewrite <- H0 at 2. Qcrush. assert (q ⊑↑ (q_trans_one E q)). apply q_trans_one_subq'. Qcrush. erewrite <- indexr_skip; eauto. bdestruct (x =? (‖ E ‖)). subst. exfalso. pose proof qenv_qn_prop. rewrite Q_lift_qn in H3. intuition. eapply IHE; eauto. erewrite <- indexr_skip; eauto.
+Qed.
+
 (******************
 *  Q_lift_trans  *
 ******************)

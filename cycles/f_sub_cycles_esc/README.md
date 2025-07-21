@@ -9,10 +9,10 @@ guidelines.
 
 This artifact supports the following claims from the paper:
 
-| Claim                                                | Supported? | How                                         |
-| -------                                              | ---------- | --------                                    |
-| Type system with cyclic references                   | Yes        | Fully mechanized in `f_sub_cycles_esc.v`    |
-| Soundness: progress, preservation, separation        | Yes        | Mechanized theorems in `f_sub_cycles_esc.v` |
+| Claim                                                 | Supported? | How                                         |
+| -------                                               | ---------- | --------                                    |
+| Type system with cyclic references                    | Yes        | Fully mechanized in `f_sub_cycles_esc.v`    |
+| Soundness: progress, preservation, separation         | Yes        | Mechanized theorems in `f_sub_cycles_esc.v` |
 | Case studies (e.g., fixed-point, escaping refs, etc.) | Yes        | Mechanized in `examples.v`                  |
 
 This guide includes:
@@ -97,12 +97,13 @@ mechanization and that in the paper. All mechanized lemmas are located in
 
 | **Coq Lemma**                        | **Coq File**         | **Lemma in Paper** |
 | ----                                 | ----                 | ----               |
-| `q_trans_tenv_subst1`                | `f_sub_cycles_esc.v` | Lemma 3.1          |
-| `substitution_gen`                   | `f_sub_cycles_esc.v` | Lemma 3.2          |
-| `progress`                           | `f_sub_cycles_esc.v` | Lemma 3.3          |
-| `preservation`                       | `f_sub_cycles_esc.v` | Lemma 3.4          |
-| `preservation_of_separation`         | `f_sub_cycles_esc.v` | Lemma 3.5          |
-| `parallel_progress_and_preservation` | `f_sub_cycles_esc.v` | Lemma 3.6          |
+| `qenv_saturated_iff`                 | `f_sub_cycles_esc.v` | Lemma 3.1          |
+| `q_trans_tenv_subst1`                | `f_sub_cycles_esc.v` | Lemma 3.2          |
+| `substitution_gen`                   | `f_sub_cycles_esc.v` | Lemma 3.3          |
+| `progress`                           | `f_sub_cycles_esc.v` | Lemma 3.4          |
+| `preservation`                       | `f_sub_cycles_esc.v` | Lemma 3.5          |
+| `preservation_of_separation`         | `f_sub_cycles_esc.v` | Lemma 3.6          |
+| `parallel_progress_and_preservation` | `f_sub_cycles_esc.v` | Lemma 3.7          |
 
 ### Examples
 

@@ -4686,42 +4686,34 @@ intros. apply Q_lift_eq. rewrite Q_lift_or. Qcrush.
 Qed.
 
 Lemma q_trans_one_subst1_tenv_comm : forall (Γ : tenv) (Σ : senv) bd bx Tx d dx',
-  wf_tenv (Γ ++ [(bd,bx,Tx,dx')]) Σ ->
-  wf_senv Σ ->
   closed_Qual 0 0 (‖ Σ ‖) dx' ↑ ->
   ({0 |-> dx' }ᵈ (q_trans_one (Γ ++ [(bd, bx, Tx, dx')]) d)) =
   (q_trans_one ({0 |-> Tx ~ dx' }ᴳ Γ) ({0 |-> dx' }ᵈ d)).
 intros. generalize dependent d. induction Γ; intros. simpl. auto. ndestruct (qfvs d 0); auto. rewrite subst1_qor_dist. erewrite @subst1_qual_id with (q:=dx'); eauto. apply Q_lift_eq. rewrite Q_lift_or. rewrite Q_lift_subst_qual. Qcrush.
 simpl. rewrite app_length, subst1_env_length. simpl. rewrite Nat.add_1_r. ndestruct (qfvs d (S (‖ Γ ‖))); simpl.
-- assert (N_lift (qfvs ({0 |-> dx' }ᵈ d)) (‖ Γ ‖)). { unfold subst_qual. ndestruct (qfvs d 0); Qcrush. } clift. rewrite <- IHΓ. rewrite subst1_qor_dist. destruct a as [ [ [ bb b ] T ] q ]. simpl. auto. eauto.
+- assert (N_lift (qfvs ({0 |-> dx' }ᵈ d)) (‖ Γ ‖)). { unfold subst_qual. ndestruct (qfvs d 0); Qcrush. } clift. rewrite <- IHΓ. rewrite subst1_qor_dist. destruct a as [ [ [ bb b ] T ] q ]. simpl. auto.
 - assert (~N_lift (qfvs ({0 |-> dx' }ᵈ d)) (‖ Γ ‖)). { unfold subst_qual. ndestruct (qfvs d 0); Qcrush. eauto. } clift. rewrite <- IHΓ; eauto.
 Qed.
 
 Lemma q_trans''_subst1_tenv_comm : forall (Γ : tenv) (Σ : senv) bd bx Tx d dx' fuel,
-  wf_tenv (Γ ++ [(bd, bx,Tx,dx')]) Σ ->
-  wf_senv Σ ->
   closed_Qual 0 0 (‖ Σ ‖) dx' ↑ ->
 ({0 |-> dx' }ᵈ (q_trans'' (Γ ++ [(bd, bx, Tx, dx')]) d fuel)) =
 (q_trans'' ({0 |-> Tx ~ dx' }ᴳ Γ) ({0 |-> dx' }ᵈ d) fuel).
 intros. generalize dependent d. induction fuel; intros; simpl; auto. rewrite IHfuel. erewrite q_trans_one_subst1_tenv_comm; eauto.
 Qed.
 
-Lemma q_trans_one_subst1_tenv_comm' : forall (Γ : tenv) (Σ : senv) bd bx Tx d dx' df0,
-  wf_tenv (Γ ++ [(bd,bx,Tx,dx')]) Σ ->
-  wf_senv Σ ->
-  closed_Qual 0 0 (‖ Σ ‖) dx' ↑ ->
+Lemma q_trans_one_subst1_tenv_comm' : forall (Γ : tenv) l bd bx Tx d dx' df0,
+  closed_Qual 0 0 l dx' ↑ ->
   ({0 |-> dx' }ᵈ (q_trans_one (Γ ++ [(bd, bx, Tx, df0 ⊓ dx')]) d)) =
   (q_trans_one ({0 |-> Tx ~ dx' }ᴳ Γ) ({0 |-> dx' }ᵈ d)).
 intros. generalize dependent d. induction Γ; intros. simpl. auto. ndestruct (qfvs d 0); auto. rewrite subst1_qor_dist. erewrite @subst1_qual_id with (q:=(df0 ⊓ dx')); eauto. apply Q_lift_eq. rewrite Q_lift_or. rewrite Q_lift_subst_qual. Qcrush. Qcrush.
 simpl. rewrite app_length, subst1_env_length. simpl. rewrite Nat.add_1_r. ndestruct (qfvs d (S (‖ Γ ‖))); simpl.
-- assert (N_lift (qfvs ({0 |-> dx' }ᵈ d)) (‖ Γ ‖)). { unfold subst_qual. ndestruct (qfvs d 0); Qcrush. } clift. rewrite <- IHΓ. rewrite subst1_qor_dist. destruct a as [ [ [ bb b ] T ] q ]. simpl. auto. eauto.
+- assert (N_lift (qfvs ({0 |-> dx' }ᵈ d)) (‖ Γ ‖)). { unfold subst_qual. ndestruct (qfvs d 0); Qcrush. } clift. rewrite <- IHΓ. rewrite subst1_qor_dist. destruct a as [ [ [ bb b ] T ] q ]. simpl. auto.
 - assert (~N_lift (qfvs ({0 |-> dx' }ᵈ d)) (‖ Γ ‖)). { unfold subst_qual. ndestruct (qfvs d 0); Qcrush. eauto. } clift. rewrite <- IHΓ; eauto.
 Qed.
 
-Lemma q_trans''_subst1_tenv_comm' : forall (Γ : tenv) (Σ : senv) bd bx Tx d dx' df0 fuel,
-  wf_tenv (Γ ++ [(bd,bx,Tx,dx')]) Σ ->
-  wf_senv Σ ->
-  closed_Qual 0 0 (‖ Σ ‖) dx' ↑ ->
+Lemma q_trans''_subst1_tenv_comm' : forall (Γ : tenv) l bd bx Tx d dx' df0 fuel,
+  closed_Qual 0 0 l dx' ↑ ->
   (* senv_saturated Σ dx' -> *)
   ({0 |-> dx' }ᵈ (q_trans'' (Γ ++ [(bd, bx, Tx, df0 ⊓ dx')]) d fuel)) =
   (q_trans'' ({0 |-> Tx ~ dx' }ᴳ Γ) ({0 |-> dx' }ᵈ d) fuel).
@@ -4745,42 +4737,36 @@ intros. eapply wf_tenv_weaken; eauto. pose proof (wf_tenv_prop H (‖ Γ2 ‖) b
 Qed.
 
 (* Growing substitution *)
-Lemma q_trans''_subst1_tenv_subq : forall Γ0 Σ bd Tx dx' df0 df bx,
-  wf_senv Σ ->
-  wf_tenv (Γ0 ++ [(bd, bx, Tx, dx')]) Σ ->
-  closed_Qual 0 0 (‖ Σ ‖) dx' ↑ ->
+Lemma q_trans''_subst1_tenv_subq : forall Γ0 l bd Tx dx' df0 df bx,
+  closed_Qual 0 0 l dx' ↑ ->
   (q_trans'' ({0 |-> Tx ~ dx' }ᴳ Γ0) ({0 |-> dx' }ᵈ df) (‖ Γ0 ‖)) ⊑↑
   ({0 |-> dx' }ᵈ (q_trans'' (Γ0 ++ [(bd, bx, Tx, df0 ⋒ dx')]) df (S (‖ Γ0 ‖)))).
 intros. erewrite <- q_trans''_subst1_tenv_comm' with (df0:=df0); eauto. apply subst_qual_subqual_monotone. eapply Subq_trans. apply q_trans''_incr_subq. eapply q_trans_tenv_narrowing_subq; eauto.
 Qed.
 
 (* Growing substitution for loc *)
-Lemma q_trans''_subst1_tenv_subq'' : forall Γ0 Σ bd Tx dx' dx dx0 df0 df bx,
+Lemma q_trans''_subst1_tenv_subq'' : forall Γ0 l bd Tx dx' dx0 df0 df bx,
   (* forall dx, (q_trans_tenv (Γ0 ++ [(bd, bx, Tx, dx)]) df0 ⋒ q_trans_tenv (Γ0 ++ [(bd, bx, Tx, dx)]) dx0) = dx -> *)
-  wf_senv Σ ->
-  wf_tenv (Γ0 ++ [(bd, bx, Tx, dx)]) Σ ->
   dx' ⊑↑ dx0 ->
-  closed_Qual 0 0 (‖ Σ ‖) dx' ↑ ->
+  closed_Qual 0 0 l dx' ↑ ->
 q_trans'' ({0 |-> Tx ~ dx' }ᴳ Γ0) ({0 |-> dx' }ᵈ df) (‖ Γ0 ‖) ⊑↑ 
 {0 |-> dx' }ᵈ (q_trans'' (Γ0 ++ [(bd, bx, Tx, df0 ⋒ dx0)]) df (S (‖ Γ0 ‖))).
 intros. erewrite <- q_trans''_subst1_tenv_comm' with (df0:=df0); eauto. apply subst_qual_subqual_monotone. 
-eapply Subq_trans. apply q_trans''_incr_subq. eapply q_trans_tenv_narrowing_subq; eauto. eapply @Subq_trans with (d2:=df0 ⊓ dx0); eauto. apply Subq_qand_split; auto. eapply wf_tenv_weaken; eauto. eapply wf_tenv_prop with (T:=Tx) (l:=0) in H0. intuition. rewrite indexr_skips; simpl; eauto.
+eapply Subq_trans. apply q_trans''_incr_subq. eapply q_trans_tenv_narrowing_subq; eauto. eapply @Subq_trans with (d2:=df0 ⊓ dx0); eauto. apply Subq_qand_split; auto.
 Qed.
 
 Lemma q_trans_tenv_subst1 : forall Γ0 Σ bd Tx dx' dx df bx,
-  wf_senv Σ ->
-  wf_tenv (Γ0 ++ [(bd, bx, Tx, dx)]) Σ ->
   closed_Qual 0 0 (‖ Σ ‖) dx' ↑ ->
   Substq (Γ0 ++ [(bd, bx, Tx, dx)]) Σ Tx dx dx' ->
   (q_trans'' ({0 |-> Tx ~ dx' }ᴳ Γ0) ({0 |-> dx' }ᵈ df) (‖ Γ0 ‖)) ⊑↑
   ({0 |-> dx' }ᵈ (q_trans'' (Γ0 ++ [(bd, bx, Tx, dx)]) df (S (‖ Γ0 ‖)))).
-intros. inversion H2; subst.
+intros. inversion H0; subst.
 - erewrite <- q_trans''_subst1_tenv_comm; eauto. apply subst_qual_subqual_monotone. apply q_trans''_incr_subq.
 - eapply @Subq_trans with (d2:=
   ({0 |-> dx' }ᵈ (q_trans'' (Γ0 ++ [(bd, bx, Tx, q_trans_tenv (Γ0 ++ [(bd, bx, Tx, dx)]) df0 ⋒ dx')]) df (S (‖ Γ0 ‖))))); eauto.
-eapply q_trans''_subst1_tenv_subq; eauto. eapply wf_tenv_weaken'; eauto.
+eapply q_trans''_subst1_tenv_subq; eauto.
 apply subst_qual_subqual_monotone. apply q_trans_tenv_narrowing_subq; auto. apply Subq_qor; auto. apply Subq_qand_split; auto. unfold q_trans_tenv. apply q_trans''_subq'.
-- erewrite <- q_trans''_subst1_tenv_comm; eauto. apply subst_qual_subqual_monotone. apply @Subq_trans with (d2:=q_trans'' (Γ0 ++ [(bd, bx, Tx, dx')]) df (S (‖ Γ0 ‖))); eauto. apply q_trans''_incr_subq. apply q_trans_tenv_narrowing_subq; auto. eapply wf_tenv_weaken'; eauto.
+- erewrite <- q_trans''_subst1_tenv_comm; eauto. apply subst_qual_subqual_monotone. apply @Subq_trans with (d2:=q_trans'' (Γ0 ++ [(bd, bx, Tx, dx')]) df (S (‖ Γ0 ‖))); eauto. apply q_trans''_incr_subq. apply q_trans_tenv_narrowing_subq; auto.
 - eapply @Subq_trans with (d2:=
   ({0 |-> dx' }ᵈ (q_trans'' (Γ0 ++ [(bd, bx, Tx, q_trans_tenv (Γ0 ++ [(bd, bx, Tx, dx)]) df0 ⋒ q_trans_tenv (Γ0 ++ [(bd, bx, Tx, dx)]) dx0)]) df (S (‖ Γ0 ‖))))); eauto. eapply q_trans''_subst1_tenv_subq''; eauto. eapply @Subq_trans with (d2:=q_trans_tenv (Γ0 ++ [(bd, bx, Tx, dx)]) dx'). apply q_trans''_subq'. apply q_trans''_subq; auto.
 Qed.
@@ -8144,6 +8130,37 @@ Proof.
   destruct Hpres2 as [Σ2 d2 φ2' HΣ2 Hφ2 Hd2 Hwf2 Hok2 Hdisj2 H2'']. remember ((sfilter σ φ1)) as σ1. remember ((sfilter (sextend σ (‖ Σ1 ‖ - ‖ Σ ‖)) φ2)) as σ2.
   exists 0, (‖ Σ1 ‖ - ‖ Σ ‖), σ1', σ2', t1', t2', Σ1, Σ2, φ1', φ2', (q1 ⋓ d1), (q2 ⋓ d2). intuition.
   erewrite <- @qqcap_fresh_r; eauto. erewrite <- qqcap_fresh_l; eauto 3.
+  apply has_type_filter in Hht1. apply has_type_filter in Hht2. eapply Subq_trans. 2: eauto.
+  eapply Qand_bound; eauto.
+  apply has_type_closed in Hht1. intuition. eauto. apply has_type_closed in Hht2. intuition.
+  apply closed_qual_qqplus. apply has_type_closed in Hht1. intuition.
+  eapply closed_qual_monotone; eauto. eapply disjointq_closed; eauto.
+  apply has_type_closed in Hht2. intuition. eapply closed_qual_monotone; eauto.
+  eapply closed_qenv_empty. apply [].
+Qed.
+
+Corollary parallel_progress_and_preservation'': forall Σ φ1 φ2 t1 t2 T1 T2 q1 q2 σ,
+  has_type [] φ1 Σ t1 T1 q1 -> has_type [] φ2 Σ t2 T2 q2 -> ~ value t1 -> ~ value t2 ->
+  CtxOK [] φ1 Σ σ -> CtxOK [] φ2 Σ σ -> wf_senv Σ -> φ1 ⋒ φ2 ⊑↑ {♦} ->
+  exists l1 l2 σ1' σ2' t1' t2' Σ1 Σ2 φ1' φ2' p1 p2,
+  step t1 (srefine σ φ1 l1) t1' σ1' /\ CtxOK [] φ1' Σ1 σ1' /\ has_type [] φ1' Σ1 t1' T1 p1 /\ Σ1 ⊇ Σ /\
+  step t2 (srefine σ φ2 l2) t2' σ2' /\ CtxOK [] φ2' Σ2 σ2' /\ has_type [] φ2' Σ2 t2' T2 p2 /\ Σ2 ⊇ Σ /\ p1 ⋒ p2 ⊑↑ {♦}.
+Proof.
+  intros Σ φ1 φ2 t1 t2 T1 T2 q1 q2 σ Hht1 Hht2 Hnv1 Hnv2 Hctx1 Hctx2 Hwf Hoverlap.
+  unfold srefine.
+  apply sfilter_preserves_ctxok in Hctx1 as Hctx1'. apply progress in Hht1 as Hstep1; auto.
+  destruct Hstep1 as [| Hstep1]; intuition.
+  specialize (Hstep1 _ Hctx1'). destruct Hstep1 as [ t1' [ σ1' Hstep1 ]]. eapply preservation in Hht1 as Hpres1; eauto.
+  destruct Hpres1 as [Σ1 d1 φ1' HΣ1 Hφ1 Hd1 Hwf1 Hok1 Hdisj1 H1']. eapply sextend_preserves_ctxok in Hctx2 as Hctx2'; eauto.
+  apply sfilter_preserves_ctxok in Hctx2'. eapply weaken_store in Hht2 as Hht2'; eauto.
+  apply progress in Hht2' as Hstep2; auto. destruct Hstep2 as [| Hstep2]; intuition. specialize (Hstep2 _ Hctx2').
+  destruct Hstep2 as [ t2' [ σ2' Hstep2 ]]. eapply preservation in Hht2' as Hpres2; eauto.
+  destruct Hpres2 as [Σ2 d2 φ2' HΣ2 Hφ2 Hd2 Hwf2 Hok2 Hdisj2 H2'']. remember ((sfilter σ φ1)) as σ1. remember ((sfilter (sextend σ (‖ Σ1 ‖ - ‖ Σ ‖)) φ2)) as σ2.
+  exists 0, (‖ Σ1 ‖ - ‖ Σ ‖), σ1', σ2', t1', t2', Σ1, Σ2, φ1', φ2', (q1 ⋓ d1), (q2 ⋓ d2). intuition.
+  simpl sextend. rewrite <- Heqσ1. assumption.
+  simpl sextend. rewrite <- Heqσ2. assumption.
+  eapply extends_trans; eauto.
+  erewrite <- @qqcap_fresh_r; eauto 3. erewrite <- qqcap_fresh_l; eauto 3.
   apply has_type_filter in Hht1. apply has_type_filter in Hht2. eapply Subq_trans. 2: eauto.
   eapply Qand_bound; eauto.
   apply has_type_closed in Hht1. intuition. eauto. apply has_type_closed in Hht2. intuition.

@@ -95,15 +95,15 @@ mechanization and that in the paper. All mechanized lemmas are located in
 
 ### Metatheory
 
-| **Coq Lemma**                        | **Coq File**         | **Lemma in Paper** |
-| ----                                 | ----                 | ----               |
-| `qenv_saturated_iff`                 | `f_sub_cycles_esc.v` | Lemma 3.1          |
-| `q_trans_tenv_subst1`                | `f_sub_cycles_esc.v` | Lemma 3.2          |
-| `substitution_gen`                   | `f_sub_cycles_esc.v` | Lemma 3.3          |
-| `progress`                           | `f_sub_cycles_esc.v` | Lemma 3.4          |
-| `preservation`                       | `f_sub_cycles_esc.v` | Lemma 3.5          |
-| `preservation_of_separation`         | `f_sub_cycles_esc.v` | Lemma 3.6          |
-| `parallel_progress_and_preservation` | `f_sub_cycles_esc.v` | Lemma 3.7          |
+| **Coq Lemma**                          | **Coq File**         | **Lemma in Paper** |
+| ----                                   | ----                 | ----               |
+| `qenv_saturated_iff`                   | `f_sub_cycles_esc.v` | Lemma 3.1          |
+| `q_trans_tenv_subst1`                  | `f_sub_cycles_esc.v` | Lemma 3.2          |
+| `substitution_gen`                     | `f_sub_cycles_esc.v` | Lemma 3.3          |
+| `progress`                             | `f_sub_cycles_esc.v` | Lemma 3.4          |
+| `preservation`                         | `f_sub_cycles_esc.v` | Lemma 3.5          |
+| `preservation_of_separation`           | `f_sub_cycles_esc.v` | Lemma 3.6          |
+| `parallel_progress_and_preservation''` | `f_sub_cycles_esc.v` | Lemma 3.7          |
 
 ### Examples
 
@@ -116,7 +116,74 @@ mechanization and that in the paper. All mechanized lemmas are located in
 | `nested_ref_type`                  | `examples.v` | Section 5.3 `escapeNestedRef` |
 | `use_writable_as_readonly_typable` | `examples.v` | Section 5.3 `useImmutableRef` |
 
-_Note_: Figure 2b is substantially similar to `typing_parallel_update`, in the
+#### Notes on Examples 
+
+The examples in the artifact are identical in behavior to those in the paper,
+but are presented using our Coq term syntax with a **standard locally nameless
+representation**. In particular, we use **de Bruijn indices** for variables
+instead of named `let`-bindings. De Bruijn indices `#k` refer to the *k*-th
+binder outward: `#0` is the nearest binder, `#1` is the next nearest binder,
+etc. Since in every function there is a self reference, `#0` refers to the
+function self reference, and `#1` refers to the argument applied to the
+function. 
+
+For example, Landin's knot in Figure 1b  
+
+```
+val c = ref (λy. y)  
+def f(x: Unit) = { (!c)(x) }  
+c := f
+```
+
+is mechanized as
+
+```
+tlet (tsref (tabs tunit))                  (* c = ref (λy. y) *)  
+     (#1 ::= (tabs (tapp (! #3) #1)))      (* c := λz. (!c)(z) *)
+```
+
+Here, `tlet` encodes `val … in …`, `tsref` is the reference constructor, `tabs`
+is λ-abstraction, `(::=)` is assignment, and `!` is dereference. With De
+bruijin indices, `#1` is the nearest binder, and `#3` refers to the next
+nearest binder. The reason we skip `#0` and `#2` is because they are function
+self references and are not used in the abstraction body. 
+
+The left-hand-side of the assignment statement `#1` refers to the nearest
+binder, which is `c` in its local context. For `tapp (! #3) #1`, `#1` refers to
+the nearest binder `x` of function `f`, `#3` refers to the second nearest
+binder, which is `c`. Thus, `tapp (! #3) #1` is exactly `(!c)(z)` in the
+paper's syntax. We will update the artifact documentation to make this
+correspondence explicit for each paper example.
+
+Similarly, the escaping reference example in Figure 3b
+
+```
+def mkRef() =  
+  val x = ... // T^c  
+  val c = new Ref(x) // μx. Ref[T^x]^c  
+  c  
+```
+
+is mechanized as:  
+
+```
+Definition escaping_example' : tm :=  
+  λ (tlet #1 (tlet (tsref #1) #1)).
+```
+
+Here, `λ` is λ-abstraction, `tlet` encodes `val … in …`, `tsref` is the
+reference constructor, and `#k` is a de Bruijn index referring to the *k*-th
+binder outward. In this term:  
+
+- The outer `λ` introduces the function parameter, which is `#1` inside its body.  
+- The first `tlet` binds `x = #1` (the parameter).  
+- The inner `tlet` binds `c = tsref #1`, where this `#1` now refers to the let-bound `x`.  
+- The final `#1` in the body of the inner `tlet` refers to `c` and is the return value.  
+
+This matches the paper's example exactly: create a value `x`, store it in a new
+reference `c`, and return `c`.
+
+Figure 2b is substantially similar to `typing_parallel_update`, in the
 sense that the two blocks reference two distinct references, although there is
 a transitively reachable path between the references via the store.  Besides,
 Section 5.2 is also substantially similar to `typing_parallel_update`, except

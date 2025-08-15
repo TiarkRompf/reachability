@@ -1335,13 +1335,13 @@ Inductive Substq : tenv -> senv -> ty -> qual -> qual -> Prop :=
     ♦∉ dx ->
     closed_Qual 0 (‖ Γ ‖) (‖ Σ ‖) df ↑ ->
     Substq Γ Σ Tx (q_trans_tenv Γ df ⋒ q_trans_tenv Γ dx) dx (* a growing substitution, e.g., we substitute the argument in t_app_fresh, note the difference. *)
-| SLoc   : forall Γ Σ Tx dx dx',
-    (Tx = TTop \/ (exists T1 d1, Tx = TRef d1 T1) \/ (exists T1 d1 T2 d2, Tx = TSRef d1 T1 d2 T2)) ->
+| SLoc   : forall Γ Σ l Tx dx dx',
+    vl Σ l Tx dx' ->
     ♦∉ dx' ->
     dx' ⊑↑ dx ->
     Substq Γ Σ Tx dx dx' (* substituting using a location *)
-| SLocGrow   : forall Γ Σ Tx df dx dx',
-    (Tx = TTop \/ (exists T1 d1, Tx = TRef d1 T1) \/ (exists T1 d1 T2 d2, Tx = TSRef d1 T1 d2 T2)) ->
+| SLocGrow   : forall Γ Σ l Tx df dx dx',
+    vl Σ l Tx dx' ->
     ♦∉ dx ->
     closed_Qual 0 (‖ Γ ‖) (‖ Σ ‖) dx ↑ -> (* for Substq_weaken *)
     closed_Qual 0 (‖ Γ ‖) (‖ Σ ‖) df ↑ ->
@@ -4494,8 +4494,8 @@ Lemma subst_qstp :  forall {Γ bd b Tf df df' Σ d1 d2},
       rewrite subst1_qor_dist. rewrite subst1_just_fv0. erewrite subst1_qual_id; eauto. inversion H4; subst.
       + rewrite qor_idem. apply qs_sq; auto. rewrite subst1_env_length. eapply closed_qual_monotone; eauto. lia.
       + rewrite <- H10 in H1. apply not_fresh_fresh_false in H1. contradiction.
-      + destruct H5. inversion H5. intuition; Ex; discriminate.
-      + destruct H5. inversion H5. intuition; Ex; discriminate.
+      + inversion H5.
+      + inversion H5.
     * rewrite subst1_qor_dist. destruct f. lia. rewrite <- subst1_just_fv.
       eapply qs_self; eauto. eapply @indexr_subst1 with (dx:=df') in H; try lia. eauto.
       eapply closed_qual_subst1; eauto.
@@ -4504,8 +4504,8 @@ Lemma subst_qstp :  forall {Γ bd b Tf df df' Σ d1 d2},
       rewrite subst1_qor_dist. rewrite subst1_just_fv0. erewrite subst1_qual_id; eauto. inversion H4; subst.
       + rewrite qor_idem. apply qs_sq; auto. rewrite subst1_env_length. eapply closed_qual_monotone; eauto. lia.
       + rewrite <- H10 in H1. apply not_fresh_fresh_false in H1. contradiction.
-      + destruct H5. inversion H5. intuition; Ex; discriminate.
-      + destruct H5. inversion H5. intuition; Ex; discriminate.
+      + inversion H5. 
+      + inversion H5.
     * rewrite subst1_qor_dist. destruct f. lia. rewrite <- subst1_just_fv.
       eapply qs_self_all; eauto. eapply @indexr_subst1 with (dx:=df') in H; try lia. eauto.
       eapply closed_qual_subst1; eauto.
@@ -4546,8 +4546,8 @@ Lemma Substq_weaken : forall Γ Σ a T df df',
 intros. induction H1; subst.
   - constructor; auto.
   - replace (q_trans_tenv Γ df ⋒ q_trans_tenv Γ dx) with (q_trans_tenv (a::Γ) df ⋒ q_trans_tenv (a::Γ) dx). constructor; auto. simpl. eapply closed_Qual_monotone; eauto. unfold q_trans_tenv. repeat rewrite q_trans''_extend_closed_id'; auto. repeat rewrite q_trans''_fuel_max with (E:=Γ) (fuel:=(‖ a :: Γ ‖)); auto. all: simpl; Qcrush; exfalso; eauto.
-  - constructor; auto.
-  - replace (q_trans_tenv Γ df ⋒ q_trans_tenv Γ dx) with (q_trans_tenv (a::Γ) df ⋒ q_trans_tenv (a::Γ) dx). apply SLocGrow; auto. 1,2: eapply closed_Qual_monotone; eauto. unfold q_trans_tenv. repeat rewrite q_trans''_extend_closed_id'; auto. repeat rewrite q_trans''_fuel_max with (E:=Γ) (fuel:=(‖ a :: Γ ‖)); auto. all: simpl; Qcrush; exfalso; eauto.
+  - eapply SLoc; eauto 3.
+  - replace (q_trans_tenv Γ df ⋒ q_trans_tenv Γ dx) with (q_trans_tenv (a::Γ) df ⋒ q_trans_tenv (a::Γ) dx). eapply SLocGrow; eauto 3. 1,2: eapply closed_Qual_monotone; eauto. unfold q_trans_tenv. repeat rewrite q_trans''_extend_closed_id'; auto. repeat rewrite q_trans''_fuel_max with (E:=Γ) (fuel:=(‖ a :: Γ ‖)); auto. all: simpl; Qcrush; exfalso; eauto.
 Qed.
 
 Lemma un_subst1_qual_open : forall {v dx q l}, closed_Qual 0 0 l dx↑ -> {0 |-> dx }ᵈ ([[v ~> ∅ ]]ᵈ q) = {0 |-> dx }ᵈ q -> [[v ~> ∅ ]]ᵈ q = q.
@@ -5780,17 +5780,17 @@ Proof.
         simpl. apply closed_Qual_qor; eauto.
         unfold q_trans_tenv. rewrite q_trans''_closed_id. rewrite <- q_trans''_or_dist. simpl. 
         assert (dx' ⊓ df ⊑↑ dx'). Qcrush. 
-        assert (dx' ⊓ dx ⊑↑ dx'). Qcrush. 
+        assert (dx' ⊓ dx ⊑↑ dx'). Qcrush.
         intuition.
         repeat rewrite qand_qor_dist_l. replace (dx' ⊓ $! 0) with (∅).
         rewrite qor_empty_left. ndestruct (qfvs df 0); eapply @Subq_trans with (d2:=(dx' ⊔ dx') ⊔ dx'); Qcrush.
         apply vtp_closed in H23. intuition. apply Q_lift_eq. Qcrush; eauto 3. Qcrush.
         simpl. constructor; auto.
-        constructor; auto.
+        eapply SLoc; intuition eauto 3.
+        Qcrush.
+        (* constructor; auto. *)
+        intuition; eauto.
         apply vtp_has_type, has_type_tloc_canonical_form in Hvtp2. intuition. 
-        right. left. Ex. exists x1, x0; intuition.
-        right. right. Ex. exists x1, x0, x3, x2. intuition.
-        Qcrush. intuition. intuition eauto. intuition.
      -- (* qualifier location case *)
         inversion H3. subst. 
         eapply @substitution_gen with (tx:=&x) (dx':=dx) in H; eauto.
@@ -6370,12 +6370,9 @@ Proof.
         erewrite <- q_trans''_closed_id with (fuel:=(‖ Γ' ‖)) (E:=Γ') (d:=df); eauto.
         erewrite <- q_trans''_closed_id with (fuel:=(‖ Γ' ‖)) (E:=Γ') (d:=dx); eauto.
         fold (q_trans_tenv Γ' df).
-        fold (q_trans_tenv Γ' dx). apply SLocGrow; auto.
-        apply vtp_has_type in Hvtp2. apply has_type_tloc_canonical_form in Hvtp2; intuition.
-        right. left. Ex. exists x1, x0; intuition.
-        right. right. Ex. exists x1, x0, x3, x2. intuition.
-        subst. simpl. eapply closed_Qual_monotone; eauto. 
-        subst. simpl. eapply closed_Qual_monotone; eauto. 
+        fold (q_trans_tenv Γ' dx). eapply SLocGrow; intuition; eauto 3.
+        eapply closed_Qual_monotone; eauto 3. lia.
+        eapply closed_Qual_monotone; eauto 3. lia.
         intuition.
         1-4: Qcrush.
         intuition eauto. intuition.
@@ -6404,12 +6401,10 @@ Proof.
         erewrite <- q_trans''_closed_id with (fuel:=(‖ Γ' ‖)) (E:=Γ') (d:=df); eauto. 
         erewrite <- q_trans''_closed_id with (fuel:=(‖ Γ' ‖)) (E:=Γ') (d:=dx) at 1; eauto.
         fold (q_trans_tenv Γ' df).
-        fold (q_trans_tenv Γ' dx). apply SLocGrow; auto.
-        apply vtp_has_type in Hvtp2. apply has_type_tloc_canonical_form in Hvtp2; intuition. 
-        right. left. Ex. exists x1, x0; intuition.
-        right. right. Ex. exists x1, x0, x3, x2. intuition.
-        subst. simpl. eapply closed_Qual_monotone; eauto. 
-        subst. simpl. eapply closed_Qual_monotone; eauto. 
+        fold (q_trans_tenv Γ' dx). eapply SLocGrow; intuition; eauto 3.
+        eapply closed_Qual_monotone; eauto 3. lia.
+        eapply closed_Qual_monotone; eauto 3. lia.
+        intuition.
         1-4: Qcrush.
      + repeat rewrite subst1_qor_dist. rewrite subst1_just_fv0. erewrite <- subst1_just_fv. erewrite subst_qual_id; eauto. apply Q_lift_eq. Qcrush.
      + simpl. erewrite subst_qual_id; eauto. erewrite subst_ty_id; eauto. Qcrush.

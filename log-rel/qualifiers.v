@@ -454,6 +454,7 @@ Proof.
 Qed.
 #[global] Hint Resolve qsub_and_lb_r : core.
 
+    
 (*
 Lemma qand_or_distribute: forall p q s, 
   qor (qand p q) s = (qand (qor p s) (qor q s)).
@@ -461,7 +462,7 @@ Proof.
   intros. unfold qor, qand.
   apply functional_extensionality. intros.
   destruct (p x) eqn:Heqn; destruct (q x) eqn: Heqn1; intuition;
-  simpl. eauto with bool. erewrite andb_true_r; auto. erewrite andb_diag. auto.
+  simpl. erewrite andb_true_r; auto. erewrite andb_diag. auto.
 Qed.*)
 
 Lemma qand_or_distribute2: forall p q s, 

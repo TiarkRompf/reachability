@@ -2,10 +2,12 @@
 
 ## Overview
 
-* `stlc_reach_ref_overlap_self_fresh_mut_stp.v`:
+* `lambda_diamond_R.v`:
     Bidirectional type system $\lambda^\diamond_R$ with decidable type checking/inference, including refined subtyping for self-references [2].
+* `lambda_diamond_E.v`:
+    Type system $\lambda^\diamond_E$.
 
-## Mechanization Outline ([`stlc_reach_ref_overlap_self_fresh_mut_stp.v`](stlc_reach_ref_overlap_self_fresh_mut_stp.v))
+## Mechanization Outline ([`lambda_diamond_R.v`](lambda_diamond_R.v))
 
 | Section | Item | Mechanization | Paper |
 |---------|------|---------------|-------|
@@ -37,6 +39,8 @@
 | Type Checking Examples | Subtype Checking    | `Example upcast_with_pair`          |
 |                        | Avoidance Algorithm | `Example avoidance_with_pair_{a,b}` |
 |                        | End-to-End Example  | `Definition pair_example`           | $\S 5$ |
+
+The typing and subtyping of $\lambda^\diamond_E$ shares same names as $\lambda^\diamond_R$ mechanization. Examples and algorithms are not included in the mechanization of $\lambda^\diamond_E$.
 
 ## References
 

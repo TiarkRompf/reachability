@@ -2,4 +2,5 @@
 env.v
 qualifiers.v
 tactics.v
-stlc_reach_ref_overlap_self_fresh_mut_stp.v
+lambda_diamond_R.v
+lambda_diamond_E.v

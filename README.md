@@ -10,9 +10,9 @@ Reachability types are a new take on modeling lifetimes and sharing in high-leve
 
 * [`polymorphism`](https://github.com/TiarkRompf/reachability/tree/main/polymorphism/) -- Coq mechanization of the $λ^\diamond$-calculus [2] and its variations, featuring a refined reachability model that scales to parametric type polymorphism.
 
-* [`log-rel-unary`](https://github.com/TiarkRompf/reachability/tree/main/log-rel-unary/) -- Unary logical relations for proving semantic type soundness and termination of $λ^\diamond$, $λ_\varepsilon^\diamond$, and its variants [4,5].
+* [`log-rel-experiment`](./log-rel-experiment/) -- Experimenting semantic models of $λ^\diamond$, $λ_\varepsilon^\diamond$, and its variants [4,5].
 
-* [`log-rel-binary`](https://github.com/TiarkRompf/reachability/tree/main/log-rel-binary/) -- Binary logical relations for establishing equational reasoning about $λ^\diamond$, $λ_\varepsilon^\diamond$, and its variants [4].
+* [`log-rel`](./log-rel/) -- Unary/Binary logical relations for proving semantic type soundness and termination of $λ^\diamond$, $λ_\varepsilon^\diamond$, as well as proofs of equational rules [4].
 
 * [`log-rel-step-indexed`](https://github.com/TiarkRompf/reachability/tree/main/log-rel-step-indexed/) -- Step-indexed logical relations for $λ^\diamond$, $λ_\varepsilon^\diamond$ and its variants [4].
 

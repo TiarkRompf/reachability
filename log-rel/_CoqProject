@@ -1,0 +1,18 @@
+-R . Top
+
+tactics.v
+env.v
+qualifiers.v
+sec2_stlc.v
+sec2_stlc_highlighted.v
+sec3_reach.v
+sec3_reach_stp.v
+sec3_reach_nested.v
+sec3_reach_nested_effs.v
+sec4_reach_binary.v
+sec4_reach_binary_effs.v
+sec5_store_invariants.v
+sec5_reorder.v
+sec5_store_invariants_effs.v
+sec5_reorder_effs.v
+sec5_beta.v

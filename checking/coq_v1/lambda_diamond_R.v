@@ -9,11 +9,6 @@
 *******************************************************************************)
 
 (* Full safety for STLC *)
-
-(* based on stlc_reach.v and stlc_ref.v *)
-(* based on stlc_reach_ref_wip_overlap.v *)
-(* based on stlc_reach_ref_overlap_self_fresh_mut.v *)
-
 (*
 
 Simply-typed lambda calculus with reachability types, combined
@@ -404,7 +399,6 @@ Inductive has_type : tenv -> tm -> ty -> ql -> bool -> ql -> Prop :=
     psub (plift q2) (plift p) -> (* necessary? *)
     has_type env y T2 p fr2 q2
 | t_ascript: forall G e T p fr q,
-    psub (plift q) (plift p) ->
     has_type G e T p fr q -> has_type G (tas e T fr q) T p fr q
 .
 
@@ -1435,8 +1429,6 @@ Proof.
       (* q *) intros ? ?. destruct (QSUB x2) as [? | ?]. unfoldq. intuition.
       eauto. eauto. unfoldq. lia.
       (* q1 *) eauto.
-      (* intros. destruct (QSUB' x2) as [? | [? | ?]]. unfoldq. intuition.
-      eauto. eauto. unfoldq. lia. *)
 
       split.
       exists x0. unfoldq. intuition. eapply var_locs_shrink. eauto. eauto.
@@ -1721,7 +1713,6 @@ Proof.
     assert (pdom env = pdom E) as DE. { unfold pdom. rewrite LE. eauto. }
     assert (pdom env = pdom V) as DV. { unfold pdom. rewrite LV. eauto. }
 
-    (* rewrite DE in *. rewrite LE in *. repeat split; auto. *)
     repeat rewrite plift_vars_locs, plift_and.
     rewrite LE in *. intuition; eauto.
     eapply env_type_store_wf. eauto. unfoldq. intuition.
@@ -1792,8 +1783,6 @@ Proof.
         eapply var_locs_shrink in H18; try lia.
         destruct H15. 2: { inversion H15. lia. }
         destruct H17 as [H_q2 | [H_fn2 | H_ar2]].
-
-(*        2: { destruct ar2; inversion H17; lia. } *)
 
         left.
         exists x0. intuition.
@@ -1888,7 +1877,7 @@ Proof.
     destruct fr1. {
       (* not fn, fr *)
       assert (plift lvf x \/ ~ plift lvf x) as D. unfold plift. destruct (lvf x); eauto.
-      (*edestruct val_locs_decide.*) destruct D. {
+      destruct D. {
         left.
         eapply overlapping. eapply WFE. eauto. eauto. eauto.
         intros ? [? ?]. eapply HSEP. split.
@@ -2026,9 +2015,8 @@ Qed.
 (* NOTE: there are several variations and special cases
          mechanized below. Not all are required to prove
          the general results, but they are useful for
-         experimentation (todo: clean up later).
+         experimentation.
  *)
-
 
 (* sementic interpretation of qualifier subtyping. *)
 
@@ -2193,7 +2181,7 @@ Proof.
         all: unfold psub, pand; intuition.
       }
       assert (plift lvf x \/ ~ plift lvf x) as D. unfold plift. destruct (lvf x); eauto.
-      (*edestruct val_locs_decide.*) destruct D. {
+      destruct D. {
         left.
         eapply overlapping. eapply WFE. eauto. eauto. eauto.
         intros ? [? ?]. eapply HSEP. split.
@@ -2284,8 +2272,6 @@ Qed.
 Definition sem_stpT G p T1 T2 :=
   forall S M E V,
     env_type M E G V p ->
-    (* env_qual M E G (pif u q1) pempty -> *)
-    (* env_accs M V (pif u q1) -> *)
     store_type S M ->
     forall v ls,
       val_type M E V v T1 ls ->
@@ -2294,8 +2280,6 @@ Definition sem_stpT G p T1 T2 :=
 Definition sem_stp0 G p T1 (fr1:bool) q1 T2 (fr2:bool) q2 :=
   forall S M E V lp,
     env_type M E G V p ->
-    (* env_qual M E G (pif u q1) pempty -> *)
-    (* env_accs M V (pif u q1) -> *)
     store_type S M ->
     forall v ls,
       val_type M E V v T1 ls ->
@@ -2307,8 +2291,6 @@ Definition sem_stp0 G p T1 (fr1:bool) q1 T2 (fr2:bool) q2 :=
 Definition sem_stp0_precise G p T1 (fr1:bool) q1 T2 (fr2:bool) q2 :=
   forall S M E V,
     env_type M E G V p ->
-    (* env_qual M E G (pif u q1) pempty -> *)
-    (* env_accs M V (pif u q1) -> *)
     store_type S M ->
     forall v ls,
       val_type M E V v T1 ls ->
@@ -2320,8 +2302,6 @@ Definition sem_stp0_precise G p T1 (fr1:bool) q1 T2 (fr2:bool) q2 :=
 Definition sem_stp1 G p T1 fr1 q1 T2 fr2 q2 :=
   forall S M E V lp,
     env_type M E G V p ->
-    (* env_qual M E G (pif u q1) pempty -> *)
-    (* env_accs M V (pif u q1) -> *)
     store_type S M ->
     forall v ls ls',
       val_type M E V v T1 ls ->
@@ -2333,8 +2313,6 @@ Definition sem_stp1 G p T1 fr1 q1 T2 fr2 q2 :=
 Definition sem_stp1_precise G p T1 (fr1:bool) q1 T2 (fr2:bool) q2 :=
   forall S M E V,
     env_type M E G V p ->
-    (* env_qual M E G (pif u q1) pempty -> *)
-    (* env_accs M V (pif u q1) -> *)
     store_type S M ->
     forall v ls ls',
       val_type M E V v T1 ls ->
@@ -2346,8 +2324,6 @@ Definition sem_stp1_precise G p T1 (fr1:bool) q1 T2 (fr2:bool) q2 :=
 Definition sem_stp2 G p grow T1 fr1 q1 T2 fr2 q2 := (* this one is the most general *)
   forall S M E V lp,
     env_type M E G V p ->
-    (* env_qual M E G (pif u q1) pempty -> *)
-    (* env_accs M V (pif u q1) -> *)
     store_type S M ->
     forall v ls,
       val_type M E V v T1 ls ->
@@ -2365,7 +2341,7 @@ Lemma stp_upT: forall G p T1 T2 q1 q2 fr1 fr2,
     sem_qstp G p q1 q2 ->
     sem_stp0 G p T1 (fr1:bool) q1 T2 (fr2:bool) q2.
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf HVF HQF.
+  intros. intros ? ? ? ? ? WFE ST vf lf HVF HQF.
   split. eauto.
   intros ? Q. eapply HQF in Q. destruct Q.
   left. eapply H0; eauto. right. eauto.
@@ -2377,7 +2353,7 @@ Lemma stp_up2: forall G p gr T1 T2 q1 q2 fr1 fr2,
     bsub fr1 fr2 ->
     sem_stp2 G p gr T1 (fr1:bool) q1 T2 (fr2:bool) q2.
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf HVF HQF.
+  intros. intros ? ? ? ? ? WFE ST vf lf HVF HQF.
   exists lf. intuition.
   eapply H; eauto.
   eapply H; eauto. intros ? Q. eapply HQF in Q. destruct Q. left. eauto.
@@ -2468,8 +2444,8 @@ Lemma sem_stp_fun0: forall G p T1a T2a T1b T2b qfa qfb
 Proof.
   intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf HVF.
 
-  specialize H as STX. (* specialize (H S M E V) as STX. *)
-  specialize H0 as STY. (* specialize (H0 S M E V) as STY. *)
+  specialize H as STX.
+  specialize H0 as STY.
 
   destruct vf; try solve [inversion HVF].
 
@@ -2531,7 +2507,6 @@ Lemma sem_stp_fun2: forall G p T1a T2a T1b T2b qfa qfb gr1 gr2 grf
        q2fn_b = true \/     (* - keep *)
        sem_qstp G p (plift qfa) (plift q2b) /\ qffr_a = false  (* - resolve func qual, if not fresh *)
     ) ->
-    (*bsub q2ar_a q2ar_b*)
     (q2ar_a = true ->      (* reach argument? *)
       (gr1 = true ->       (*   can it grow? *)
         (sem_qstp G p (plift q1a) (plift q2b) \/   (* covered by q2 *)
@@ -2550,8 +2525,7 @@ Lemma sem_stp_fun2: forall G p T1a T2a T1b T2b qfa qfb gr1 gr2 grf
     (grf = true ->
      q1fn_b = true ->
      q1fr_a = true /\
-       q1fn_a = true (* \/ ...
-       sem_qstp G p (plift qfb) (plift q1a) *)
+       q1fn_a = true
     ) ->
     True ->
     True ->
@@ -2567,10 +2541,10 @@ Lemma sem_stp_fun2: forall G p T1a T2a T1b T2b qfa qfb gr1 gr2 grf
       (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a (plift qfa)
       (TFun T1b q1fn_b q1fr_b q1b T2b q2fn_b q2ar_b q2fr_b q2b) qffr_b (plift qfb).
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf HVF.
+  intros. intros ? ? ? ? ? WFE ST vf lf HVF.
 
-  rename H into STX. (* specialize (H S M E V) as STX. *)
-  rename H0 into STY. (* specialize (H0 S M E V) as STY. *)
+  rename H into STX.
+  rename H0 into STY.
 
   rename H1 into BS_Q1FN.
   rename H2 into BS_Q1FR.
@@ -2614,7 +2588,7 @@ Proof.
            (pif q1fr_b
               (pnot (plift (qor lf (qif grf (vars_locs_fix V qfb)))))))) x) as QQ. 
          split. eauto. eauto.
-         eapply QQ. (* eapply H_rest. *)
+         eapply QQ.
          destruct q1fn_b; destruct q1fr_b; destruct H_rest; inversion HeqC; try contradiction. }
 
     destruct (HVF S' M' vx lsx') as (S'' & M'' & vy & lsy & ? & ? & ? & ? & ?).
@@ -2713,10 +2687,10 @@ Lemma sem_stp_fun_refl: forall G p T1a T2a T1b T2b
       (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa
       (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa.
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf HVF.
+  intros. intros ? ? ? ? ? WFE ST vf lf HVF.
 
-  specialize H as STX. (* specialize (H S M E V) as STX. *)
-  specialize H0 as STY. (* specialize (H0 S M E V) as STY. *)
+  specialize H as STX.
+  specialize H0 as STY.
 
   destruct vf; try solve [inversion HVF].
 
@@ -2744,22 +2718,21 @@ as long as a is separate from the function.
 
 
 Lemma sem_stp_fun_arg_change_fresh_to_qual: forall G p T1a T2a T1b T2b
-                                         q1fn_a (*q1fr_a*) (*q1a*) q2fn_a q2ar_a q2fr_a q2a
+                                         q1fn_a q2fn_a q2ar_a q2fr_a q2a
                                          q1b qffr_a qfa,
     (* --- closedness -- *)
     closed_ty (length G) T1b ->
     psub (plift q1b) (pdom G) ->
     closed_ty (length G) T2b ->
-    (* todo: any qf that doesn't overlap with q1b is fine *)
     qfa = pempty ->
     sem_stp0_precise G p
       (TFun T1a q1fn_a true qempty T2a q2fn_a q2ar_a q2fr_a q2a) false qfa
       (TFun T1a q1fn_a false q1b   T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa.
 Proof.
-  intros. intros ? ? ? ? WFE (* WFQ WFX *) ST vf lf HVF.
+  intros. intros ? ? ? ? WFE ST vf lf HVF.
 
-  specialize H as STX. (* specialize (H S M E V) as STX. *)
-  specialize H0 as STY. (* specialize (H0 S M E V) as STY. *)
+  specialize H as STX.
+  specialize H0 as STY.
 
   destruct vf; try solve [inversion HVF].
 
@@ -2791,7 +2764,7 @@ Proof.
 Qed.
 
 Lemma sem_stp_fun_arg_drop_self: forall G p T1a T2a T1b T2b
-                                         (*q1fn_a*) q1fr_a q1a q2fn_a q2ar_a q2fr_a q2a
+                                         q1fr_a q1a q2fn_a q2ar_a q2fr_a q2a
                                          false qfa,
     (* --- closedness -- *)
     closed_ty (length G) T1b ->
@@ -2801,10 +2774,10 @@ Lemma sem_stp_fun_arg_drop_self: forall G p T1a T2a T1b T2b
       (TFun T1a true  q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) false (plift qfa)
       (TFun T1a false q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) false (plift qfa).
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf HVF.
+  intros. intros ? ? ? ? ? WFE ST vf lf HVF.
 
-  specialize H as STX. (* specialize (H S M E V) as STX. *)
-  specialize H0 as STY. (* specialize (H0 S M E V) as STY. *)
+  specialize H as STX.
+  specialize H0 as STY.
 
   destruct vf; try solve [inversion HVF].
 
@@ -2846,10 +2819,10 @@ Lemma sem_stp_fun_res_change_qual_to_self: forall G p T1a T2a T1b T2b
       (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a    q2ar_a q2fr_a q2a        ) qffr_a qfa
       (TFun T1a q1fn_a q1fr_a q1a T2a true(*!*) q2ar_a q2fr_a qempty(*!*)) qffr_a qfa.
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf lf' HVF HQF AQ.
+  intros. intros ? ? ? ? ? WFE ST vf lf lf' HVF HQF AQ.
 
-  specialize H as STX. (* specialize (H S M E V) as STX. *)
-  specialize H0 as STY. (* specialize (H0 S M E V) as STY. *)
+  specialize H as STX.
+  specialize H0 as STY.
 
   destruct vf; try solve [inversion HVF].
 
@@ -2902,20 +2875,19 @@ Qed.
 (* works now, without q2 < qf *)
 
 Lemma sem_stp_fun_res_change_arg_to_self: forall G p T1a T2a T1b T2b
-                                         q1fn_a (*q1fr_a*) q1a q2fn_a (*q2ar_a*) q2fr_a q2a
+                                         q1fn_a q1a q2fn_a q2fr_a q2a
                                          qffr_a qfa,
     (* --- closedness -- *)
     closed_ty (length G) T1b ->
     closed_ty (length G) T2b ->
-    (* TODO: currently we require q1a = 0 ! *)
     sem_stp0 G p
       (TFun T1a q1fn_a false q1a T2a q2fn_a             true  q2fr_a q2a) qffr_a qfa
       (TFun T1a q1fn_a false q1a T2a (q2fn_a || q1fn_a) false q2fr_a (qor q2a q1a)) qffr_a qfa.
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf HVF.
+  intros. intros ? ? ? ? ? WFE ST vf lf HVF.
 
-  specialize H as STX. (* specialize (H S M E V) as STX. *)
-  specialize H0 as STY. (* specialize (H0 S M E V) as STY. *)
+  specialize H as STX.
+  specialize H0 as STY.
 
   destruct vf; try solve [inversion HVF].
 
@@ -2994,18 +2966,17 @@ Lemma sem_stp_fun_fresh_arg_to_self: forall G p T1a T1b T2 fr1 fr2 q1 q2
     psub (plift q1a) p ->
     psub (plift q1) (plift q2) ->
     (q2ar_a = true -> psub (plift q1a) (plift q2)) -> (* only needed when switching x -> f *)
-    sem_stp2 G p true T1b false (plift q1b) T1a false (*fr2*) (plift q1a) ->  (*  A2^u  -> A1^a  *)
+    sem_stp2 G p true T1b false (plift q1b) T1a false (plift q1a) ->  (*  A2^u  -> A1^a  *)
     (q1fn_a = true \/ fr1 = false /\ q1 = qempty) ->
     bsub fr1 fr2 ->
     True ->
     sem_stp2 G p q2ar_a (* grow when switching x -> f *)
-      (TFun T1a q1fn_a true qempty T2 q2fn_a(*false*) q2ar_a(*true*) false qempty) fr1 (plift q1) (*  A1^f* -> B^x  q1    *)
+      (TFun T1a q1fn_a true qempty T2 q2fn_a q2ar_a false qempty) fr1 (plift q1) (*  A1^f* -> B^x  q1    *)
       (TFun T1b false false q1b T2 true q2ar_b false qempty) fr2 (plift q2).  (*  A2^u  -> B^f  q1,a  *)
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf. intros HVF HQF.
+  intros. intros ? ? ? ? ? WFE ST vf lf. intros HVF HQF.
 
-  rename H5 into STX. (* specialize (H S M E V) as STX. *)
-  (* specialize H0 as STY. (* specialize (H0 S M E V) as STY. *) *)
+  rename H5 into STX.
   rename H6 into HGF.
 
   destruct vf; try solve [inversion HVF].
@@ -3340,7 +3311,7 @@ Lemma sem_stp_fun_fn1fr1_to_q1fn2: forall G p T1 T2 q1 fr1 qfa qfb q2fn_a,
       (TFun T1 true  true  qempty T2 q2fn_a true  false qempty) fr1 (plift qfa)  (*   A^f* -> B^x      *)
       (TFun T1 false false q1     T2 true  false false qempty) fr1 (plift qfb). (* ( A^a  -> B^f )^a  *)
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf. intros HVF HQF.
+  intros. intros ? ? ? ? ? WFE ST vf lf. intros HVF HQF.
   edestruct sem_stp_fun_fn1fr1_to_q1 with (q1b:=q1). eauto. eauto. eauto. eapply HVF. eapply HQF.
   edestruct sem_stp_fun_ar2_to_q2 with (q1:=q1). eauto. eauto. eauto. eapply H3. eapply H3.
   edestruct sem_stp_fun_q2_to_fn2. 4: eauto. 4: eauto. 4: eapply H4. 4: eapply H4.
@@ -3357,14 +3328,14 @@ Lemma sem_stp_fun_T1q1: forall G p T1a T1b T2 fr1 q1b q1a qfa qfb,
     psub (plift qfb) p ->
     psub (plift qfa) (plift qfb) ->
     psub (plift q1b) (plift qfb) ->
-    sem_stp2 G p true T1b false (plift q1b) T1a false (*fr2*) (plift q1a) ->  (*   B^b -> A^a      *)
+    sem_stp2 G p true T1b false (plift q1b) T1a false (plift q1a) ->  (*   B^b -> A^a      *)
     sem_stp2 G p true
       (TFun T1a false false q1a T2 true false false qempty) fr1 (plift qfa)   (*   A^a -> C^f      *)
       (TFun T1b false false q1b T2 true false false qempty) fr1 (plift qfb).  (* ( B^b -> C^f )^b  *)
 Proof.
   intros. intros ? ? ? ? ? WFE ST vf lf. intros HVF HQF.
 
-  rename H5 into STX. (* specialize (H S M E V) as STX. *)
+  rename H5 into STX.
 
   destruct vf; try solve [inversion HVF].
 
@@ -3431,12 +3402,12 @@ Lemma sem_stp_fun_fresh_arg_to_self_piecewise: forall G p T1a T1b T2 fr1 q1b q1a
     psub (plift q1b) (plift q1a) ->
     psub (plift qfa) (plift qfb) ->
     psub (plift q1a) (plift qfb) ->
-    sem_stp2 G p true T1b false (plift q1b) T1a false (*fr2*) (plift q1a) ->     (*   B^b  -> A^a      *)
+    sem_stp2 G p true T1b false (plift q1b) T1a false (plift q1a) ->     (*   B^b  -> A^a      *)
     sem_stp2 G p true
       (TFun T1a true  true  qempty T2 false true  false qempty) fr1 (plift qfa)  (*   A^f* -> B^x      *)
       (TFun T1b false false q1b    T2 true  false false qempty) fr1 (plift qfb). (* ( A^a  -> B^f )^a  *)
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf. intros HVF HQF.
+  intros. intros ? ? ? ? ? WFE ST vf lf. intros HVF HQF.
   edestruct sem_stp_fun_fn1fr1_to_q1fn2 with (q1:=q1a) (qfb:=qfb).
   5: eauto. 5: eauto. 5: eapply HVF. 5: eapply HQF.
   eauto. eauto. eauto. eauto.
@@ -3518,7 +3489,6 @@ Outer growth: with A <: B^a (growth)
 <: (A^*f -> A^xa)
 <: (A^*f -> A^xf)^a
 
-
 *)
 
 Definition TF_inner_transp A a := TFun A false false a A true false false qempty.
@@ -3535,7 +3505,7 @@ Lemma sem_stp_opaque_inner: forall G p A a fr1,
       (TF_inner_opaque A) fr1 (plift qempty)
       (TF_inner_transp A a) fr1 (plift a).
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf. intros HVF HQF.
+  intros. intros ? ? ? ? ? WFE ST vf lf. intros HVF HQF.
   eapply sem_stp_fun_fn1fr1_to_q1fn2; eauto.
   unfoldq. intuition. unfoldq. intuition. 
 Qed.
@@ -3549,7 +3519,6 @@ Definition TF_outer_opaque A B := TFun A true true qempty B true true false qemp
 Lemma sem_stp_opaque_outer: forall G p A B a fr1,
     (* --- closedness --- *)
     closed_ty (length G) A ->
-(*  closed_ty (length G) B -> *)
     closed_ql (length G) a ->
     psub (plift a) p ->
     (* --- result --- *)
@@ -3557,7 +3526,7 @@ Lemma sem_stp_opaque_outer: forall G p A B a fr1,
       (TF_outer_transp (TF_inner_transp A a) B) fr1 (plift a)
       (TF_outer_opaque (TF_inner_opaque A) B) fr1 (plift a).
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf. intros HVF HQF.
+  intros. intros ? ? ? ? ? WFE ST vf lf. intros HVF HQF.
 
   
   destruct vf; try solve [inversion HVF].
@@ -3598,7 +3567,7 @@ Proof.
       * eauto.
       * intros ? Q. eapply HQY in Q. destruct Q as [H_q | [H_vf | H_fr]].
         -- left. eauto.
-        -- contradiction. (* right. left. rewrite plift_or. left. eauto. *)
+        -- contradiction.
         -- destruct H_fr as [H_vx | H_fr].
            eapply HQX' in H_vx. destruct H_vx.
            ++ right. left. rewrite plift_or, plift_vars_locs. right. eauto.
@@ -3629,10 +3598,10 @@ Lemma sem_stp_fun_refl': forall G p T1a T2a T1b T2b
       (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa
       (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa.
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf HVF.
+  intros. intros ? ? ? ? ? WFE ST vf lf HVF.
 
-  specialize H as STX. (* specialize (H S M E V) as STX. *)
-  specialize H0 as STY. (* specialize (H0 S M E V) as STY. *)
+  specialize H as STX.
+  specialize H0 as STY.
 
   destruct vf; try solve [inversion HVF].
 
@@ -3649,7 +3618,7 @@ Lemma sem_stp_fun_res_type: forall G p T1a T2a
                                q1fn_a q1fr_a q1a q2fn_a q2ar_a q2fr_a q2a
                                qffr_a qfa
                                T2b,
-    sem_stp0 G p T2a (*q2fr_a*) true (plift q2a) T2b (*q2fr_a*) true (plift q2a) ->
+    sem_stp0 G p T2a true (plift q2a) T2b true (plift q2a) ->
     (* --- closedness --- *)
     closed_ty (length G) T2b ->
     (* --- result --- *)
@@ -3657,9 +3626,9 @@ Lemma sem_stp_fun_res_type: forall G p T1a T2a
       (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa
       (TFun T1a q1fn_a q1fr_a q1a T2b(*!*) q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa.
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf HVF.
+  intros. intros ? ? ? ? ? WFE ST vf lf HVF.
 
-  specialize H as STY. (* specialize (H S M E V) as STX. *)
+  specialize H as STY.
 
   destruct vf; try solve [inversion HVF].
 
@@ -3713,7 +3682,7 @@ Lemma sem_stp_fun_res_qual: forall G p T1a T2a
       (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa
       (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2b(*!*)) qffr_a qfa.
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf HVF.
+  intros. intros ? ? ? ? ? WFE ST vf lf HVF.
 
   specialize H as STY. (* specialize (H S M E V) as STX. *)
 
@@ -3759,9 +3728,9 @@ Lemma sem_stp_fun_res_typequal: forall G p T1a T2a
       (TFun T1a q1fn_a q1fr_a q1a T2a q2fn_a q2ar_a q2fr_a q2a) qffr_a qfa
       (TFun T1a q1fn_a q1fr_a q1a T2b(*!*) q2fn_a q2ar_a q2fr_a q2b(*!*)) qffr_a qfa.
 Proof.
-  intros. intros ? ? ? ? ? WFE (* WFQ WFX *) ST vf lf HVF.
+  intros. intros ? ? ? ? ? WFE ST vf lf HVF.
 
-  specialize H as STY. (* specialize (H S M E V) as STX. *)
+  specialize H as STY.
 
   destruct vf; try solve [inversion HVF].
 
@@ -4030,7 +3999,7 @@ Qed.
 Lemma sem_sub_stp1: forall env y p T1 T2 fr1 fr2 q1 q2 q2',
     sem_type env y T1 p fr1 q1 ->
     sem_stp1 env p T1 fr1 q1 T2 fr2 q2 ->
-    sem_qstp env p q1 q2 -> (* XXX *)
+    sem_qstp env p q1 q2 ->
     bsub fr1 fr2 ->
     plift q2' = pand p q2 ->
     sem_type env y T2 p fr2 q2.
@@ -4100,7 +4069,7 @@ Definition sem_stp G p T1 fr1 q1 T2 fr2 q2 :=
 
 Lemma sem_stp0_to_stp: forall env p T1 T2 fr1 fr2 q1 q2,
     sem_stp0 env p T1 fr1 q1 T2 fr2 q2 ->
-    sem_qstp env p q1 q2 -> (* XXX *)
+    sem_qstp env p q1 q2 ->
     bsub fr1 fr2 ->
     sem_stp env p T1 fr1 q1 T2 fr2 q2.
 Proof.
@@ -4118,7 +4087,7 @@ Qed.
 
 Lemma sem_stp1_to_stp: forall env p T1 T2 fr1 fr2 q1 q2 q2',
     sem_stp1 env p T1 fr1 q1 T2 fr2 q2 ->
-    sem_qstp env p q1 q2 -> (* XXX *)
+    sem_qstp env p q1 q2 ->
     bsub fr1 fr2 ->
     plift q2' = pand p q2 ->
     sem_stp env p T1 fr1 q1 T2 fr2 q2.
@@ -4245,9 +4214,7 @@ Proof.
     eapply qstp_fundamental in QH0 as QFH0.
 
     eapply stp2_up_gr. eapply sem_stp_fun2. (* always compute with gr = false, then upcast *)
-    (* rewrite plift_or, plift_if in IHstp1. *)
     eapply IHstp1.
-    (* rewrite plift_or, plift_or, plift_if, plift_or, plift_if, plift_if in IHstp2. *)
     eapply IHstp2.
 
     all: eauto.
@@ -4326,15 +4293,12 @@ Proof.
     repeat rewrite plift_if in *.
     repeat rewrite plift_one in *.
     eapply sem_abs; eauto.
-  (* - eapply sem_sub; eauto.
-  - rewrite plift_or, plift_diff, plift_one.
-    eapply sem_sub_var; eauto. *)
   - eapply sem_sub_stp. eauto. eapply stp_fundamental; eauto.
   - unfold sem_type in *. intros S M E V Het H0. specialize (IHW S M E V Het H0).
     unfold exp_type in *. destruct IHW as [S' [M' [v [ls IHW]]]].
     exists S'. exists M'. exists v. exists ls. intuition.
-    unfold tevaln in *. destruct H1 as [nm H1]. exists (Datatypes.S nm). intros.
-    unfold teval. simpl. destruct n. lia. fold teval. apply H1. lia.
+    unfold tevaln in *. destruct H as [nm H]. exists (Datatypes.S nm). intros.
+    unfold teval. simpl. destruct n. lia. fold teval. apply H. lia.
 Qed.
 
 
@@ -4474,11 +4438,6 @@ Proof.
     apply orb_prop in Q as [Q | Q]. 2: apply orb_prop in Q as [Q | Q].
     destruct fn2; intuition. destruct ar2; intuition. intuition.
   - intuition. econstructor; intuition.
-  (* - intuition.
-  - intuition. rewrite closedql_or_dist. intuition.
-    intros ? Q. unfold qdiff in *. eapply H6. destruct (q1 x0). eauto.
-    inversion Q.
-    eapply closedq_extend. eapply H0. eauto. eapply indexr_var_some' in H2. lia. *)
   - intuition.
     eapply stp_closed in H1. intuition.
     eapply stp_qstp in H1. destruct H1.
@@ -4496,7 +4455,7 @@ Proof.
   intros. eapply s_refl. eauto. eauto.
 Qed.
 
-Lemma stp_qs: forall T1 env p gr q1 q2 fr1 fr2, (* XXX: check if this holds! *)
+Lemma stp_qs: forall T1 env p gr q1 q2 fr1 fr2,
     closed_ty (length env) T1 ->
     qstp env p q1 q2 ->
     bsub fr1 fr2 ->
@@ -4597,7 +4556,7 @@ Lemma t_let_plain: forall env t1 t2 p T1 q1 T2 ar2 fr2 q2 q2' q2'',
 Proof.
   intros. subst. unfold tlet.
   eapply t_app_plain. 2: eapply H.
-  eapply t_abs with (fn1:=false) (fn2:=false) (ar2:=ar2) (q1:=q1) (* q1 := pand p q1 *)(qf:=p) (q2:=q2).
+  eapply t_abs with (fn1:=false) (fn2:=false) (ar2:=ar2) (q1:=q1) (qf:=p) (q2:=q2).
   qsimpl. rewrite qand_sub in H0.
   eapply H0.
   eauto. eauto. (* q1 < p *)
@@ -4629,7 +4588,7 @@ Proof.
   eapply t_abs with (fn1:=false) (fn2:=false) (ar2:=ar2) (q1:=(vars_trans_fix env q1)) (qf:=p) (q2:=q2).
   qsimpl. rewrite qand_sub in H0.
   eapply H0.
-  eauto. eauto. (* q1 < p *)
+  eauto. eauto.
   eapply hast_closed. eauto. eauto.
   eauto.
   eauto.
@@ -5071,8 +5030,6 @@ Proof.
   }
   2: { simpl. eauto. }
   {
-    (* eapply t_sub_stp with (T1:=(TFun_transparent3 A a A)) (fr1:=false) (q1:=a). *)
-
     eapply t_abs with (qf:=a) (fn1:=false) (fr1:=false) (fn2:=true) (ar2:=false). {
       remember (_::env) as env1.
       eapply t_sub_stp.
@@ -5170,7 +5127,6 @@ Proof.
   }
   2: { simpl. split.  }
   {
-    (* eapply t_sub_stp with (q1:= qempty). *)
     eapply t_abs with (fn1:=true) (ar2:=true). {
       qsimpl. remember (_::env) as env1.
       eapply t_var. subst. eapply indexr_head.
@@ -5303,7 +5259,6 @@ Proof.
     eapply t_let_fresh with (q1:=qempty) (ar2:=true) (T2:=TBox_opaque2 (TRef (TBool))). { (* outer let *)
       eapply t_ref. eapply t_true.
     } {
-      (* remember ([(_,_,_)]) as env. *)
       simpl. qsimpl. assert (telescope [(TRef TBool, true, qempty)]). {
         apply telescope_extend. crush. closed. unfold telescope.
         intros. inversion H.
@@ -6551,7 +6506,6 @@ Proof.
       split. 2: destruct fn1; auto. all: apply not_true_iff_false; intro Hx.
       all: apply not_true_iff_false in Hpx; apply Hpx. apply H. auto. apply H6. auto.
   - eapply t_sub_stp. apply IHhas_type; auto. eapply stp_filter_widening; eauto. crush.
-  - eapply t_ascript. crush. apply IHhas_type. crush.
 Qed.
 
 Fixpoint result_match (G: tenv) (ta: typeact) (p: ql) (T: ty) (fr: bool) (q: ql) : Prop :=
@@ -6799,7 +6753,7 @@ Proof.
   (* tas *)
   - simpl in Hbds. crush_match Hbds. eapply IHe in Heqm as [Hht Hrm]; auto.
     unfold result_match in Hrm. intuition; subst. eapply t_ascript; auto.
-    apply hast_closed in Hht as [_ [_ Hhtc]]; auto. all: simpl in Hctm; tauto.
+    all: simpl in Hctm; tauto.
 Unshelve.
   all: apply true.
 Qed.

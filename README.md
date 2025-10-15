@@ -54,7 +54,7 @@ Oliver Bračevac, Guannan Wei, Luke Jiang, Supun Abeysinghe, Songlin Jia, Siyuan
 ([pdf](https://www.cs.purdue.edu/homes/rompf/papers/bracevac-oopsla23.pdf)).
 
 [4] **Modeling Reachability Types with Logical Relations: Semantic Type Soundness, Termination, and Equational Theory** (OOPSLA 2025)</br>
-Yuyan Bao, Guannan Wei, Oliver Bračevac, Tiark Rompf
+Yuyan Bao, Songlin Jia, Guannan Wei, Oliver Bračevac, Tiark Rompf
 ([pdf](https://dl.acm.org/doi/pdf/10.1145/3763116)).
 
 [5] **Complete the Cycle: Reachability Types with Expressive Cyclic References** (OOPSLA 2025) </br>

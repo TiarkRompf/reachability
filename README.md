@@ -32,7 +32,7 @@ polymorphic reachability types [2].
 
 * [Oliver Bračevac](https://bracevac.org) (Initial mechanization lead 2021-2022)
 * [Guannan Wei](https://continuation.passing.style) (Polymorphism lead 2023-2024)
-* [Yuyan Bao](https://yuyanbao.github.io) (Logical relations lead 2023-2024)
+* [Yuyan Bao](https://yuyanbao.github.io) (Logical relations lead 2023-2025)
 * [Songlin Jia](https://songlinj.github.io) (Type checking lead 2024-2025)
 * [Siyuan He](https://sweetsinpackets.github.io)
 * [David Deng](https://github.com/PROgram52bc)
@@ -57,22 +57,28 @@ Oliver Bračevac, Guannan Wei, Luke Jiang, Supun Abeysinghe, Songlin Jia, Siyuan
 Yuyan Bao, Guannan Wei, Oliver Bračevac, Tiark Rompf
 ([pdf](https://dl.acm.org/doi/pdf/10.1145/3763116)).
 
-[5] **Escape with Your Self: Expressive Reachability Types with Sound and Decidable Bidirectional Type Checking** </br>
-Songlin Jia, Guannan Wei, Siyuan He, Yuyan Bao, Tiark Rompf
-([pdf](https://arxiv.org/pdf/2404.08217.pdf)).
-
-[6] **Complete the Cycle: Reachability Types with Expressive Cyclic References** (OOPSLA 2025) </br>
+[5] **Complete the Cycle: Reachability Types with Expressive Cyclic References** (OOPSLA 2025) </br>
 Haotian Deng, Siyuan He, Songlin Jia, Yuyan Bao, Tiark Rompf
 ([pdf](https://dl.acm.org/doi/pdf/10.1145/3763172)).
 
-[7] **When Lifetimes Liberate: A Type System for Arenas with Higher-Order Reachability Tracking** </br>
+[6] **Escape with Your Self: Expressive Reachability Types with Sound and Decidable Bidirectional Type Checking** (Tech Report 2025)</br>
+Songlin Jia, Guannan Wei, Siyuan He, Yuyan Bao, Tiark Rompf
+([pdf](https://arxiv.org/pdf/2404.08217.pdf)).
+
+[7] **When Lifetimes Liberate: A Type System for Arenas with Higher-Order Reachability Tracking** (Tech Report 2025)</br>
 Siyuan He, Songlin Jia, Yuyan Bao, Tiark Rompf
 ([pdf](https://arxiv.org/pdf/2509.04253))
 
-[8] **Free to Move: Reachability Types with Flow-Sensitive Effects for Safe Deallocation and Ownership Transfer** </br>
+[8] **Free to Move: Reachability Types with Flow-Sensitive Effects for Safe Deallocation and Ownership Transfer** (Tech Report 2025)</br>
 Haotian Deng, Siyuan He, Songlin Jia, Yuyan Bao, Tiark Rompf
 ([pdf](https://arxiv.org/pdf/2510.08939))
 
-[9] **Typestate via Revocable Capabilities** </br>
+[9] **Typestate via Revocable Capabilities**  (Tech Report 2025)</br>
 Songlin Jia, Craig Liu, Siyuan He, Haotian Deng, Yuyan Bao, Tiark Rompf
 ([pdf](https://arxiv.org/pdf/2510.08889))
+
+[10] **Type, Ability, and Effect Systems: Perspectives on Purity, Semantics, and Expressiveness** (Tech Report 2025)</br>
+Yuyan Bao, Tiark Rompf
+([pdf](https://arxiv.org/pdf/2510.07582))
+
+

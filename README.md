@@ -18,7 +18,7 @@ Reachability types are a new take on modeling lifetimes and sharing in high-leve
 
 * [`checking`](https://github.com/TiarkRompf/reachability/tree/main/checking/) -- Bidirectional type system $\lambda^\diamond_R$ with decidable type checking/inference, including refined subtyping for self-references [5]
 
-* [`cycles`](https://github.com/TiarkRompf/reachability/tree/main/cycles/) -- Bounded type-and-reachability polymorphism with cyclic references and natural numbers.
+* [`cycles`](https://github.com/TiarkRompf/reachability/tree/main/cycles/) -- Bounded type-and-reachability polymorphism with cyclic references and natural numbers [6].
 
 ## Prototype Implementations
 
@@ -53,10 +53,26 @@ Guannan Wei, Oliver Bračevac, Siyuan He, Yuyan Bao, Tiark Rompf
 Oliver Bračevac, Guannan Wei, Luke Jiang, Supun Abeysinghe, Songlin Jia, Siyuan He, Yuyan Bao, Tiark Rompf
 ([pdf](https://www.cs.purdue.edu/homes/rompf/papers/bracevac-oopsla23.pdf)).
 
-[4] **Modeling Reachability Types with Logical Relations: Semantic Type Soundness, Termination, and Equational Theory** (arXiv 2023)</br>
+[4] **Modeling Reachability Types with Logical Relations: Semantic Type Soundness, Termination, and Equational Theory** (OOPSLA 2025)</br>
 Yuyan Bao, Guannan Wei, Oliver Bračevac, Tiark Rompf
-([pdf](https://arxiv.org/pdf/2309.05885.pdf)).
+([pdf](https://dl.acm.org/doi/pdf/10.1145/3763116)).
 
 [5] **Escape with Your Self: Expressive Reachability Types with Sound and Decidable Bidirectional Type Checking** </br>
-Songlin Jia, Guannan Wei, Siyuan He, Yueyang Tang, Yuyan Bao, Tiark Rompf
+Songlin Jia, Guannan Wei, Siyuan He, Yuyan Bao, Tiark Rompf
 ([pdf](https://arxiv.org/pdf/2404.08217.pdf)).
+
+[6] **Complete the Cycle: Reachability Types with Expressive Cyclic References** (OOPSLA 2025) </br>
+Haotian Deng, Siyuan He, Songlin Jia, Yuyan Bao, Tiark Rompf
+([pdf](https://dl.acm.org/doi/pdf/10.1145/3763172)).
+
+[7] **When Lifetimes Liberate: A Type System for Arenas with Higher-Order Reachability Tracking** </br>
+Siyuan He, Songlin Jia, Yuyan Bao, Tiark Rompf
+([pdf](https://arxiv.org/pdf/2509.04253))
+
+[8] **Free to Move: Reachability Types with Flow-Sensitive Effects for Safe Deallocation and Ownership Transfer** </br>
+Haotian Deng, Siyuan He, Songlin Jia, Yuyan Bao, Tiark Rompf
+([pdf](https://arxiv.org/pdf/2510.08939))
+
+[9] **Typestate via Revocable Capabilities** </br>
+Songlin Jia, Craig Liu, Siyuan He, Haotian Deng, Yuyan Bao, Tiark Rompf
+([pdf](https://arxiv.org/pdf/2510.08889))

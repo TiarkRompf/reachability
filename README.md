@@ -20,6 +20,8 @@ Reachability types are a new take on modeling lifetimes and sharing in high-leve
 
 * [`cycles`](https://github.com/TiarkRompf/reachability/tree/main/cycles/) -- Bounded type-and-reachability polymorphism with cyclic references and natural numbers [6].
 
+* [`arena`](https://github.com/TiarkRompf/reachability/tree/main/arena/) -- Region-based resource management, cyclic store structures via coarse-grained reachability tracking, and scoped deallocation reasoning [7].
+
 ## Prototype Implementations
 
 * Interactive [prototype](http://tiarkrompf.github.io/notes/?/graph-ir/) for [1],
@@ -34,7 +36,7 @@ polymorphic reachability types [2].
 * [Guannan Wei](https://continuation.passing.style) (Polymorphism lead 2023-2024)
 * [Yuyan Bao](https://yuyanbao.github.io) (Logical relations lead 2023-2025)
 * [Songlin Jia](https://songlinj.github.io) (Type checking lead 2024-2025)
-* [Siyuan He](https://sweetsinpackets.github.io)
+* [Siyuan He](https://sweetsinpackets.github.io) (Arena lead 2024-2025)
 * [David Deng](https://github.com/PROgram52bc)
 * [Yueyang Tang](https://github.com/Emanon42)
 * [Tiark Rompf](https://tiarkrompf.github.io)

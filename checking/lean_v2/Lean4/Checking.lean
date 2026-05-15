@@ -5,10 +5,10 @@ namespace Reachability
 
 -- monadic
 
-instance: Repr IO.RealWorld := ⟨fun _ _ => "(42)"⟩
+instance: Repr (Void IO.RealWorld) := ⟨fun _ _ => "(42)"⟩
 
 structure Stat where
-  world: IO.RealWorld
+  world: Void IO.RealWorld
   cnt_unify: ℕ
   cnt_growth: ℕ
   cnt_avoid: ℕ
@@ -75,7 +75,7 @@ instance: LinearOrder id where
   le_total a b := by
     simp [instLEId]; split; simp; simp; omega; omega
     split <;> simp at *; cases a <;> simp at * <;> cases b <;> simp at *
-  decidableLE a b := by
+  toDecidableLE a b := by
     simp [instLEId]; split <;> infer_instance
 
 def format_finset [LinearOrder α] (s: Finset α) (f: α → String): Std.Format :=
@@ -101,10 +101,18 @@ def ty.format (t: ty) (qs: Option Std.Format) (n: ℕ) (m: List String): Std.For
   | .TAll T1 q1 T2 q2 =>
     s!"∀${n}{qs.getD ""}" ++ (s!"${n+1} <: " ++ T1.format (q1.format m0) (n+1) m1).sbracket ++
     "." ++ (T2.format (q2.format m2) (n+2) m2).indentD
-  | .TBool => "Bool" ++ qs.getD ""
+  | .TUnit => "Unit" ++ qs.getD ""
   | .TTop => "⊤" ++ qs.getD ""
+  | .TNat => "ℕ" ++ qs.getD ""
   | .TVar x => x.format m ++ qs.getD ""
-  | .TRef T q => "Ref" ++ (T.format (q.format m0) n m).sbracket ++ qs.getD ""
+  | .TRef2 T1 q1 T2 q2 => s!"μ${n}{qs.getD ""}.Ref" ++
+    (T1.format (q1.format m0) (n+1) m1).sbracket ++
+    (T2.format (q2.format m0) (n+1) m1).sbracket
+  | .TProd T1 q1 T2 q2 => s!"μ${n}{qs.getD ""}.Pair" ++
+    (T1.format (q1.format m0) (n+1) m1).sbracket ++
+    (T2.format (q2.format m0) (n+1) m1).sbracket
+  | .TList T => s!"μ${n}{qs.getD ""}.List" ++
+    (T.format none (n+1) m1).sbracket
 
 def ty.format' := (ty.format · none · [])
 instance: Repr ty := ⟨fun T _ => T.format' 0⟩
@@ -114,8 +122,14 @@ def tm.format (t: tm) (p n: Nat) (m: List String): Std.Format :=
   let m1 := s!"${n}"::m
   let m0 := "#0"::m
   match t, p with
-  | .ttrue, _ => "true"
-  | .tfalse, _ => "false"
+  | .tunit, _ => "()"
+  | .tnat n, _ => s!"{n}"
+  | .tadd t1 t2, p =>
+    let res := t1.format 10 n m ++ " + " ++ t2.format 10 n m
+    if p > 1 then res.paren else res
+  | .tmul t1 t2, p =>
+    let res := t1.format 10 n m ++ " * " ++ t2.format 10 n m
+    if p > 1 then res.paren else res
   | .tvar x, _ => s!"%{x}"
   | .tref t, p =>
     let res := (t.format 1 n m).bracket "new Ref(" ")"
@@ -126,6 +140,19 @@ def tm.format (t: tm) (p n: Nat) (m: List String): Std.Format :=
   | .tput t1 t2, p =>
     let res := t1.format 10 n m ++ " := " ++ t2.format 1 n m
     if p > 1 then res.paren else res
+  | .tpair t1 t2, p =>
+    let res := (t1.format 1 n m ++ ", " ++ t2.format 1 n m).bracket "new Pair(" ")"
+    if p > 1 then res.paren else res
+  | .tfst t, _ => t.format 10 n m ++ ".fst"
+  | .tsnd t, _ => t.format 10 n m ++ ".snd"
+  | .tnil, _ => "[]"
+  | .tcons hd tl, p =>
+    let res := hd.format 10 n m ++ " :: " ++ tl.format 1 n m
+    if p > 1 then res.paren else res
+  | .tfold tl t0 t1, _ =>
+    tl.format 10 n m ++ ".fold(" ++
+      t0.format 1 n m ++ s!"λ(${n}, ${n+1})." ++
+      (t1.format 1 (n+2) m2).indentD ++ ")"
   | .tlet' t1 T1 q1 t2, p =>
     let prem := (T1.format (q1.format m) n m).bracket s!"val ${n+1}: " " = "
     let res := prem ++ (t1.format 1 n m).group ++ ";" ++ .line ++ t2.format 0 (n+2) m2
@@ -134,14 +161,17 @@ def tm.format (t: tm) (p n: Nat) (m: List String): Std.Format :=
     let prem := s!"val ${n+1} = "
     let res := prem ++ (t1.format 1 n m).group ++ ";" ++ .line ++ t2.format 0 (n+2) m2
     if p > 0 then "{" ++ res.indentD ++ .line ++ "}" else res
-  | .tabs t, p =>
+  | .tabs none t, p =>
     let res := s!"λ${n}(${n+1})." ++ (t.format 1 (n+2) m2).indentD
     if p > 1 then res.paren else res
-  | .tabsa T q t, p =>
+  | .tabs (some (T, q)) t, p =>
     let typ := T.format (q.format m0) (n+1) m1
     let res := typ.bracket s!"λ${n}(${n+1}: " ")." ++ (t.format 1 (n+2) m2).indentD
     if p > 1 then res.paren else res
-  | .ttabs T q t, p =>
+  | .ttabs none t, p =>
+    let res := s!"Λ${n}[${n+1}]." ++ (t.format 1 (n+2) m2).indentD
+    if p > 1 then res.paren else res
+  | .ttabs (some (T, q)) t, p =>
     let typ := T.format (q.format m0) (n+1) m1
     let res := typ.bracket s!"Λ${n}[${n+1} <: " "]." ++ (t.format 1 (n+2) m2).indentD
     if p > 1 then res.paren else res
@@ -160,9 +190,15 @@ instance: Decidable (closed_ql fr bv fv q) := by
 instance: Decidable (occurs f T x) := dec f T x
 where
   dec f T x: Decidable (occurs f T x) := by
-    cases T <;> simp!; infer_instance; infer_instance
-    case TRef T q =>
-      have := dec f.tighten T x; infer_instance
+    cases T <;> simp!; infer_instance; infer_instance; infer_instance
+    case TRef2 T1 q1 T2 q2 =>
+      have := dec f.flip T1 (x+1); have := dec f T2 (x+1)
+      infer_instance
+    case TProd T1 q1 T2 q2 =>
+      have := dec f T1 (x+1); have := dec f T2 (x+1)
+      infer_instance
+    case TList T =>
+      have := dec f T (x+1); infer_instance
     case TFun T1 q1 T2 q2 =>
       have := dec f.flip T1 (x+1); have := dec f T2 (x+2)
       infer_instance
@@ -174,8 +210,15 @@ where
 instance: Decidable (closed_ty bv fv T) := dec bv fv T
 where
   dec bv fv T: Decidable (closed_ty bv fv T) := by
-    cases T <;> simp!; infer_instance; infer_instance
-    case TRef T q => have := dec bv fv T; infer_instance
+    cases T <;> simp!; infer_instance; infer_instance; infer_instance
+    case TRef2 T1 q1 T2 q2 =>
+      have := dec (bv+1) fv T1
+      have := dec (bv+1) fv T2; infer_instance
+    case TProd T1 q1 T2 q2 =>
+      have := dec (bv+1) fv T1
+      have := dec (bv+1) fv T2; infer_instance
+    case TList T =>
+      have := dec (bv+1) fv T; infer_instance
     case TFun T1 q1 T2 q2 =>
       have := dec (bv+1) fv T1
       have := dec (bv+2) fv T2; infer_instance
@@ -264,28 +307,6 @@ def check_app (G: tenv) (gs: gfset) (qf qx q1: ql): M (tenv × ql) :=
 
 -- subtype checking
 
-def sub_size' (G: List ℕ) (T: ty): ℕ :=
-  match T with
-  | .TRef T _ =>
-    1 + sub_size' G T
-  | .TFun T1 _ T2 _ =>
-    1 + sub_size' (G ++ [0]) [#0 ↦ %‖G‖] T1
-      + sub_size' (G ++ [0, 0]) [#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] T2
-  | .TAll T1 _ T2 _ =>
-    let n1 := sub_size' (G ++ [0]) [#0 ↦ %‖G‖] T1
-    1 + sub_size' (G ++ [0, n1]) [#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] T2
-  | .TVar (%x) =>
-    1 + G.getD x 0
-  | _ => 1
-termination_by ty_size T
-decreasing_by all_goals simp! <;> omega
-
-def tenv.sub_sizes (G: tenv): List ℕ :=
-  G.foldl (fun res (T, _, bn) => res ++ [if bn = .tvar then sub_size' res T else 0]) []
-
-def sub_size (G: tenv) (T: ty): ℕ :=
-  sub_size' G.sub_sizes T
-
 def check_stp2 (fuel: ℕ) (G: tenv) (q0: ql) (T1 T2: ty) (gs: gfset): M (ql × tenv) :=
   qtrace s!"stp2: {T1.format' ‖G‖} <: {T2.format' ‖G‖}" do
     let (gr, G') ← go fuel G q0 T1 T2 gs
@@ -293,7 +314,8 @@ def check_stp2 (fuel: ℕ) (G: tenv) (q0: ql) (T1 T2: ty) (gs: gfset): M (ql × 
     return (gr, G')
 where go fuel G q0 T1 T2 gs := do
   match fuel, T1, T2 with
-  | _ + 1, .TBool, .TBool => return (∅, G)
+  | _ + 1, .TUnit, .TUnit => return (∅, G)
+  | _ + 1, .TNat, .TNat => return (∅, G)
   | _ + 1, _, .TTop => return (∅, G)
   | fuel + 1, T1@(.TVar (%x)), T2 =>
     if T1 = T2 ∧ x < ‖G‖ then
@@ -302,14 +324,27 @@ where go fuel G q0 T1 T2 gs := do
       let (T1', _, bn) ← G[x]?
       qassert (bn = .tvar) "not a type var"
       check_stp2 fuel G q0 T1' T2 gs
-  | fuel + 1, .TRef T1 q1, .TRef T2 q2 =>
-    qassert (#0 ∉ q1 ∧ #0 ∉ q2) "Selfref in Refs"
-    let ⟨gr1, G1⟩ ← check_stp2 fuel G {✦} T1 T2 gs
-    let ⟨gr2, G2⟩ ← check_stp2 fuel G1 {✦} T2 T1 gs
-    qassert (gr1 = ∅ ∧ gr2 = ∅) "Unexpected growth"
-    let G3 ← check_qtp G2 gs q1 q2
-    let G4 ← check_qtp G3 gs q2 q1
-    return (∅, G4)
+  | fuel + 1, .TRef2 T1a q1a T2a q2a, .TRef2 T1b q1b T2b q2b =>
+    let gs' := gs ∪ {‖G‖}
+    let ⟨gr1, G1⟩ ← check_stp2 fuel (G ++ [(.TTop, q0, .self)]) {✦} ([#0 ↦ %‖G‖] T1b) ([#0 ↦ %‖G‖] T1a) gs'
+    let G2 ← check_qtp G1 gs' (gr1 ∪ q1b) q1a
+    let ⟨gr2, G3⟩ ← check_stp2 fuel G2 {✦} ([#0 ↦ %‖G‖] T2a) ([#0 ↦ %‖G‖] T2b) gs'
+    let G4 ← check_qtp G3 gs' (gr2 ∪ [#0 ↦ %‖G‖] q2a) ([#0 ↦ %‖G‖] q2b)
+    let (_, g, _) ← G4[‖G‖]?
+    return (gr1 \ {%‖G‖} ∪ gr2 \ {%‖G‖} ∪ g \ q0, G4.take ‖G‖)
+  | fuel + 1, .TProd T1a q1a T2a q2a, .TProd T1b q1b T2b q2b =>
+    let gs' := gs ∪ {‖G‖}
+    let ⟨gr1, G1⟩ ← check_stp2 fuel (G ++ [(.TTop, q0, .self)]) {✦} ([#0 ↦ %‖G‖] T1a) ([#0 ↦ %‖G‖] T1b) gs'
+    let G2 ← check_qtp G1 gs' (gr1 ∪ [#0 ↦ %‖G‖] q1a) ([#0 ↦ %‖G‖] q1b)
+    let ⟨gr2, G3⟩ ← check_stp2 fuel G2 {✦} ([#0 ↦ %‖G‖] T2a) ([#0 ↦ %‖G‖] T2b) gs'
+    let G4 ← check_qtp G3 gs' (gr2 ∪ [#0 ↦ %‖G‖] q2a) ([#0 ↦ %‖G‖] q2b)
+    let (_, g, _) ← G4[‖G‖]?
+    return (gr1 \ {%‖G‖} ∪ gr2 \ {%‖G‖} ∪ g \ q0, G4.take ‖G‖)
+  | fuel + 1, .TList T1, .TList T2 =>
+    let gs' := gs ∪ {‖G‖}
+    let ⟨gr1, G1⟩ ← check_stp2 fuel (G ++ [(.TTop, q0, .self)]) {✦} ([#0 ↦ %‖G‖] T1) ([#0 ↦ %‖G‖] T2) gs'
+    let (_, g, _) ← G1[‖G‖]?
+    return (gr1 \ {%‖G‖} ∪ g \ q0, G1.take ‖G‖)
   | fuel + 1, .TFun T1a q1a T2a q2a, .TFun T1b q1b T2b q2b =>
     let gs' := gs ∪ {‖G‖}
     let ⟨g1, G1⟩ ← check_stp2 fuel (G ++ [(.TTop, q0, .self)]) {✦}
@@ -342,9 +377,13 @@ where go fuel G q0 T1 T2 gs := do
 def unpack_self (T1: ty) (q0: ql): ty :=
   if ✦ ∈ q0 then T1
   else match T1 with
+  | .TUnit | .TNat | .TVar _ | .TTop => T1
+  | .TRef2 T1 q1 T2 q2 => .TRef2 ([#0 ↦ q0] T1) q1 ([#0 ↦ q0] T2) ([#0 ↦ q0] q2)
   | .TFun T1 q1 T2 q2 => .TFun ([#0 ↦ q0] T1) q1 ([#0 ↦ q0] T2) ([#0 ↦ q0] q2)
   | .TAll T1 q1 T2 q2 => .TAll ([#0 ↦ q0] T1) q1 ([#0 ↦ q0] T2) ([#0 ↦ q0] q2)
-  | _ => T1
+  | .TProd T1 q1 T2 q2 =>
+    .TProd ([#0 ↦ q0] T1) ([#0 ↦ q0] q1) ([#0 ↦ q0] T2) ([#0 ↦ q0] q2)
+  | .TList T => .TList ([#0 ↦ q0] T)
 
 def check_stp (G: tenv) (q0: ql) (T1 T2: ty) (gs: gfset): M (ql × tenv) :=
   qtrace s!"stp: {T1.format' ‖G‖} <: {T2.format' ‖G‖}" do
@@ -362,14 +401,25 @@ def unpack_argself (T1: ty) (qf: ql): M ty := do
 
 def polsub (pol: Bool) (t: ty) (x: id) (y: id): M ty := do
   match t with
-  | .TBool | .TTop => return t
+  | .TUnit | .TNat | .TTop => return t
   | .TVar x' =>
     qassert (x = y → x ≠ x') "cannot fully remove var"
     return t
-  | .TRef T q =>
-    let flag := if x = y then .none else .noneq
-    qassert (occurs flag T x ∧ (x+1) ∉ q) "cannot fully remove var"
-    return .TRef T q
+  | .TRef2 T1 q1 T2 q2 =>
+    let T1' ← polsub (!pol) T1 (x+1) (y+1)
+    let q1' := [x+1 ↦ ?[!pol] {y+1}] q1
+    let T2' ← polsub pol T2 (x+1) (y+1)
+    let q2' := [x+1 ↦ ?[pol] {y+1}] q2
+    return .TRef2 T1' q1' T2' q2'
+  | .TProd T1 q1 T2 q2 =>
+    let T1' ← polsub pol T1 (x+1) (y+1)
+    let q1' := [x+1 ↦ ?[pol] {y+1}] q1
+    let T2' ← polsub pol T2 (x+1) (y+1)
+    let q2' := [x+1 ↦ ?[pol] {y+1}] q2
+    return .TProd T1' q1' T2' q2'
+  | .TList T =>
+    let T' ← polsub pol T (x+1) (y+1)
+    return .TList T'
   | .TFun T1 q1 T2 q2 =>
     let T1' ← polsub (!pol) T1 (x+1) (y+1)
     let q1' := [x+1 ↦ ?[!pol] {y+1}] q1
@@ -392,6 +442,21 @@ def avoid (t: ty) (x: id): M (ty × ql) := do
   else
     modify (fun s => { s with cnt_avoid := s.cnt_avoid + 1 })
     match t with
+    | .TRef2 T1 q1 T2 q2 =>
+      let T1' ← polsub false T1 (x+1) #0
+      let q1' := [x+1 ↦ (∅: ql)] q1
+      let T2' ← polsub true T2 (x+1) #0
+      let q2' := [x+1 ↦ #0] q2
+      return (.TRef2 T1' q1' T2' q2', {x})
+    | .TProd T1 q1 T2 q2 =>
+      let T1' ← polsub true T1 (x+1) #0
+      let q1' := [x+1 ↦ #0] q1
+      let T2' ← polsub true T2 (x+1) #0
+      let q2' := [x+1 ↦ #0] q2
+      return (.TProd T1' q1' T2' q2', {x})
+    | .TList T =>
+      let T' ← polsub true T (x+1) #0
+      return (.TList T', {x})
     | .TFun T1 q1 T2 q2 =>
       let T1' ← polsub false T1 (x+1) #0
       let q1' := [x+1 ↦ (∅: ql)] q1
@@ -404,7 +469,7 @@ def avoid (t: ty) (x: id): M (ty × ql) := do
       let T2' ← polsub true T2 (x+2) #0
       let q2' := [x+2 ↦ #0] q2
       return (.TAll T1' q1' T2' q2', {x})
-    | _ => throw ↑"Unavoidable, probably nested refs."
+    | .TUnit | .TNat | .TTop | .TVar _ => throw ↑"unreachable"
 
 def avoid_app (T2: ty) (qf qx: ql): M (ty × ql) := do
   let (T2a, gr2a) ← (do if ✦ ∉ qx then return (T2, ∅) else avoid T2 #1)
@@ -418,7 +483,7 @@ def texposure (G: tenv) (t: ty): ty :=
   | .TVar (%x) =>
     match h: G[x]? with
     | some (t', _, .tvar) =>
-      have := (List.getElem?_eq_some.1 h).1
+      have := (List.getElem?_eq_some_iff.1 h).1
       texposure (G.take x) t'
     |_ => t
   | _ => t
@@ -430,43 +495,101 @@ mutual
 
 def tinfer (G: tenv) (gs: gfset) (t: tm): M (tenv × ql × ty × ql) := do
   match t with
-  | .ttrue | .tfalse =>
-    return (G, ∅, .TBool, ∅)
+  | .tunit =>
+    return (G, ∅, .TUnit, ∅)
   | .tvar x =>
     let (T, _, bn) ← G[x]?
     qassert (bn = .var) "not a variable"
     return (G, {%x}, T, {%x})
+
+  | .tnat _ =>
+    return (G, ∅, .TNat, ∅)
+  | .tadd t1 t2 =>
+    let (G1, p1, _) ← tcheck' G gs t1 .TNat
+    let (G2, p2, _) ← tcheck' G1 gs t2 .TNat
+    return (G2, p1 ∪ p2, .TNat, ∅)
+  | .tmul t1 t2 =>
+    let (G1, p1, _) ← tcheck' G gs t1 .TNat
+    let (G2, p2, _) ← tcheck' G1 gs t2 .TNat
+    return (G2, p1 ∪ p2, .TNat, ∅)
+
   | .tref t =>
     let (G', p, T, q) ← tinfer' G gs t
     qassert (✦ ∉ q) "Ref over fresh."
-    return (G', p, .TRef T q, {✦})
+    return (G', p, .TRef1 T q, {✦})
   | .tget t =>
-    let (G', p, T, _) ← tinfer' G gs t
-    if let .TRef T1 q1 := texposure G' T then
-      qassert (#0 ∉ q1) "Getting on non-ref."
-      return (G', p ∪ q1, T1, q1)
+    let (G', p, T, qr) ← tinferexp G gs t
+    if let .TRef2 _ _ T2 q2 := T then
+      let (T2', gr) ← avoid_app T2 qr ∅
+      let q2' := q2 ∪ gr
+      return (G', p ∪ q2 \ {#0}, [#0 ↦ qr] T2', [#0 ↦ qr] q2')
     else throw ↑"Getting on non-ref."
   | .tput t1 t2 =>
-    let (G', p1, T, _) ← tinfer' G gs t1
-    if let .TRef T1 q1 := texposure G' T then
-      qassert (#0 ∉ q1) "Getting on non-ref."
-      let (G'', p2) ← tcheckq G' gs t2 T1 q1
-      return (G'', p1 ∪ p2, .TBool, ∅)
+    let (G', p1, T, qr) ← tinferexp G gs t1
+    if let .TRef2 T1 q1 _ _ := T then
+      let T1' ← unpack_argself T1 qr
+      let (G'', p2) ← tcheckq G' gs t2 T1' q1
+      return (G'', p1 ∪ p2, .TUnit, ∅)
     else throw ↑"Putting on non-ref."
-  | .tabsa T1 q1 t =>
+
+  | .tpair t1 t2 =>
+    let (G1, p1, T1, q1) ← tinfer' G gs t1
+    let (G2, p2, T2, q2) ← tinfer' G1 gs t2
+    return (G2, p1 ∪ p2, .TProd T1 ([✦ ↦ #0] q1) T2 ([✦ ↦ #0] q2), q1 ∪ q2)
+  | .tfst t =>
+    let (G', p, T, qr) ← tinferexp G gs t
+    if let .TProd T1 q1 _ _ := T then
+      let (T1', gr) ← avoid_app T1 qr ∅
+      let q1' := q1 ∪ gr
+      return (G', p ∪ q1 \ {#0}, [#0 ↦ qr] T1', [#0 ↦ qr] q1')
+    else throw ↑"Getting on non-ref."
+  | .tsnd t =>
+    let (G', p, T, qr) ← tinferexp G gs t
+    if let .TProd _ _ T2 q2 := T then
+      let (T2', gr) ← avoid_app T2 qr ∅
+      let q2' := q2 ∪ gr
+      return (G', p ∪ q2 \ {#0}, [#0 ↦ qr] T2', [#0 ↦ qr] q2')
+    else throw ↑"Getting on non-ref."
+
+  | .tcons t0 t1 =>
+    let (G1, p1, T1, q1) ← tinfer' G gs t0
+    let (G2, p2, q2) ← tcheck' G1 gs t1 (.TList T1)
+    return (G2, p1 ∪ p2, .TList T1, q1 ∪ q2)
+  | .tfold tl t0 t1 =>
+    let (G1, p1, T, ql) ← tinferexp G gs tl
+    let (G2, p2, U, q0) ← tinfer' G1 gs t0
+    qassert (✦ ∉ ql ∧ ✦ ∉ q0) "Folding with freshness unsupported"
+    if let .TList T := unpack_self T ql then
+      let (G3, p3) ← tcheckq (G2++[(T, ql, .var), (U, q0, .var)]) gs t1 U q0
+      return (G3.take ‖G‖, p1 ∪ p2 ∪ p3 \ {%‖G‖, %(‖G‖+1)}, U, q0)
+    else throw ↑"Folding on non-list"
+
+  | .tanno t T q =>
+    qassert (closed_ty 0 ‖G‖ T ∧ closed_ql true 0 ‖G‖ q) "Annotation not closed."
+    let (G', p) ← tcheckq G gs t T q
+    return (G', p, T, q)
+
+  | t => tinfer2 G gs t
+termination_by (sizeOf t, 1)
+
+def tinfer2 (G: tenv) (gs: gfset) (t: tm): M (tenv × ql × ty × ql) := do
+  match t with
+  | .tabs (some (T1, q1)) t =>
     qassert (closed_ty 1 ‖G‖ T1 ∧
         closed_ql true 1 ‖G‖ q1 ∧
         occurs .no_covariant T1 #0 ∧
         (#0 ∈ q1 → ✦ ∈ q1)) "Ill argument type."
     let (G', qf, T2, q2) ← tinferabs G gs T1 q1 .var t
     return (G', qf, .TFun T1 q1 T2 q2, qf)
-  | .ttabs T1 q1 t =>
+
+  | .ttabs (some (T1, q1)) t =>
     qassert (closed_ty 1 ‖G‖ T1 ∧
         closed_ql true 1 ‖G‖ q1 ∧
         occurs .no_covariant T1 #0 ∧
         (#0 ∈ q1 → ✦ ∈ q1)) "Ill argument type."
     let (G', qf, T2, q2) ← tinferabs G gs T1 q1 .tvar t
     return (G', qf, .TAll T1 q1 T2 q2, qf)
+
   | .tlet t2 t1 =>
     let (G1, p1, Tx, qx) ← tinfer' G gs t2
     let (G2, qf, T2, q2) ← tinferabs G1 gs Tx qx .var t1
@@ -474,9 +597,10 @@ def tinfer (G: tenv) (gs: gfset) (t: tm): M (tenv × ql × ty × ql) := do
     let q2' := q2 ∪ gr
     let p := qf ∪ p1 ∪ q2' \ {✦, #0, #1}
     return (G2, p, [#0 ↦ qf] [#1 ↦ qx] T2', [#0 ↦ qf] [#1 ↦ qx] q2')
+
   | .tapp t1 t2 =>
-    let (G1, p0, Tf, qf) ← tinfer' G gs t1
-    if let .TFun T1 q1 T2 q2 := texposure G1 Tf then
+    let (G1, p0, Tf, qf) ← tinferexp G gs t1
+    if let .TFun T1 q1 T2 q2 := Tf then
       let T1' ← unpack_argself T1 qf
       let (G', p1, qx) ← tcheck' G1 gs t2 T1'
       let (G'', p2) ← check_app G' gs qf qx q1
@@ -485,10 +609,11 @@ def tinfer (G: tenv) (gs: gfset) (t: tm): M (tenv × ql × ty × ql) := do
       let p := p0 ∪ p1 ∪ p2 ∪ q2' \ {✦, #0, #1}
       return (G'', p, [#0 ↦ qf] [#1 ↦ qx] T2', [#0 ↦ qf] [#1 ↦ qx] q2')
     else throw ↑"Applying non-function."
+
   | .ttapp t Tx qx =>
     qassert (closed_ty 0 ‖G‖ Tx ∧ closed_ql true 0 ‖G‖ qx) "Type application not closed"
-    let (G1, p0, Tf, qf) ← tinfer' G gs t
-    if let .TAll T1 q1 T2 q2 := texposure G1 Tf then
+    let (G1, p0, Tf, qf) ← tinferexp G gs t
+    if let .TAll T1 q1 T2 q2 := Tf then
       let T1' ← unpack_argself T1 qf
       let (g1, G') ← check_stp G1 {✦} Tx T1' gs
       qassert (g1 = ∅) "TyApp failed."
@@ -499,16 +624,18 @@ def tinfer (G: tenv) (gs: gfset) (t: tm): M (tenv × ql × ty × ql) := do
       let p := p0 ∪ p1 ∪ p2 ∪ q2' \ {✦, #0, #1}
       return (G'', p, [#0 ↦ qf] [#1 ↦ (Tx, qx)] T2', [#0 ↦ qf] [#1 ↦ qx] q2')
     else throw ↑"Applying non-function."
-  | .tanno t T q =>
-    qassert (closed_ty 0 ‖G‖ T ∧ closed_ql true 0 ‖G‖ q) "Annotation not closed."
-    let (G', p) ← tcheckq G gs t T q
-    return (G', p, T, q)
-  | .tabs _ => throw ↑"No inference on abstraction."
-termination_by (sizeOf t, 1)
 
-def tinfer' (G: tenv) (gs: gfset) (t: tm) :=
+  | _ => throw ↑"No inference on abstraction."
+termination_by (sizeOf t, 0)
+
+def tinfer' (G: tenv) (gs: gfset) (t: tm): M (tenv × ql × ty × ql) :=
   qtrace s!"infer: {(t.format' ‖G‖).indentD}" (tinfer G gs t)
 termination_by (sizeOf t, 2)
+
+def tinferexp (G: tenv) (gs: gfset) (t: tm): M (tenv × ql × ty × ql) := do
+  let (G, p, T, q) ← tinfer' G gs t
+  return (G, p, texposure G T, q)
+termination_by (sizeOf t, 3)
 
 def tinferabs (G: tenv) (gs: gfset) (T1: ty) (q1: ql) (bn: binding) (t2: tm): M (tenv × ql × ty × ql) := do
   modify (fun s => { s with cnt_inferqf := s.cnt_inferqf + 1 })
@@ -520,28 +647,32 @@ def tinferabs (G: tenv) (gs: gfset) (T1: ty) (q1: ql) (bn: binding) (t2: tm): M 
   return (G2.take ‖G‖, qf, [%(‖G‖+1) ↦ #1] [%‖G‖ ↦ #0] T2b, [%(‖G‖+1) ↦ #1] [%‖G‖ ↦ #0] q2b)
 termination_by (sizeOf t2, 3)
 
+def tcheckabs (G: tenv) (gs: gfset) (T1: ty) (q1: ql) (bn: binding) (t: tm) (T2: ty) (q2: ql): M (tenv × ql) := do
+  modify (fun s => { s with cnt_inferqf := s.cnt_inferqf + 1 })
+  let G' := G ++ [(.TTop, ∅, .self), ([#0 ↦ %‖G‖] T1, [#0 ↦ %‖G‖] q1, bn)]
+  let (G'', p0) ← tcheckq G' (gs ∪ {‖G‖}) t ([#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] T2) ([#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] q2)
+  let (_, qf, _) ← G''[‖G‖]?
+  let qf' := qf ∪ p0 \ {%‖G‖, %(‖G‖+1)} ∪ q1 \ {✦, #0}
+  return (G''.take ‖G‖, qf')
+termination_by (sizeOf t, 6)
+
 def tcheck (G: tenv) (gs: gfset) (t: tm) (T: ty): M (tenv × ql × ql) := do
   match t, T with
-  | .tabs t, .TFun T1 q1 T2 q2 =>
-    modify (fun s => { s with cnt_inferqf := s.cnt_inferqf + 1 })
-    let G' := G ++ [(.TTop, ∅, .self), ([#0 ↦ %‖G‖] T1, [#0 ↦ %‖G‖] q1, .var)]
-    let (G'', p0) ← tcheckq G' (gs ∪ {‖G‖}) t ([#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] T2) ([#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] q2)
-    let (_, qf, _) ← G''[‖G‖]?
-    let qf' := qf ∪ p0 \ {%‖G‖, %(‖G‖+1)} ∪ q1 \ {✦, #0}
-    return (G''.take ‖G‖, qf', qf')
-  | .tref t, .TRef T q =>
-    qassert (#0 ∉ q) "Selfrefed Ref."
-    let (G', p, q') ← tcheck' G gs t T
-    let G'' ← check_qtp G' gs q' q
-    return (G'', p ∪ q, {✦})
+  | .tnil, .TList _ => return (G, ∅, ∅)
+  | .tabs none t, .TFun T1 q1 T2 q2 =>
+    let (G', qf) ← tcheckabs G gs T1 q1 .var t T2 q2
+    return (G', qf, qf)
+  | .ttabs none t, .TAll T1 q1 T2 q2 =>
+    let (G', qf) ← tcheckabs G gs T1 q1 .tvar t T2 q2
+    return (G', qf, qf)
   | t@_, T@_ =>
     let (G', p, T', q') ← tinfer' G gs t
     let (gr, G'') ← check_stp G' q' T' T gs
-    return (G'', p ∪ q' \ {✦} ∪ gr, q' ∪ gr)
+    return (G'', p ∪ gr, q' ∪ gr)
 termination_by (sizeOf t, 3)
 decreasing_by (all_goals simp [Prod.lex_def]); subst_vars; simp
 
-def tcheck' (G: tenv) (gs: gfset) (t: tm) (T: ty) :=
+def tcheck' (G: tenv) (gs: gfset) (t: tm) (T: ty): M (tenv × ql × ql) :=
   qtrace s!"check: {T.format' ‖G‖} {(t.format' ‖G‖).indentD}" (tcheck G gs t T)
 termination_by (sizeOf t, 4)
 
@@ -567,35 +698,30 @@ instance: Add MCountResult where
     let ⟨tm2, tp2, q2⟩ := rhs
     ⟨tm1 + tm2, tp1 + tp2, q1 + q2⟩
 
-inductive QualPosition where
-| unk | arg | ret
-deriving DecidableEq
+def ql.mcounts (q: ql): MCountResult :=
+  ⟨0, 0, q.card⟩
 
-def ql.mcounts (q: ql) (p: QualPosition) (t: ty): MCountResult :=
-  if q = ∅ ∧ t = .TBool ∨
-     q = {✦, #0} ∧ p = .arg ∨
-     q = {#0, #1} ∧ p = .ret
-  then ⟨0, 0, 0⟩ else ⟨0, 0, 1⟩
-
-def ty.mcounts (t: ty) (q: ql) (pos: QualPosition): MCountResult :=
-  cnt t + q.mcounts pos t
+def ty.mcounts (t: ty) (q: ql): MCountResult :=
+  cnt t + q.mcounts
 where cnt : ty → MCountResult
-  | TRef T q => T.mcounts q .unk + ⟨0, 1, 0⟩
-  | TFun T1 q1 T2 q2 => T1.mcounts q1 .arg + T2.mcounts q2 .ret + ⟨0, 1, 0⟩
-  | TAll T1 q1 T2 q2 => T1.mcounts q1 .arg + T2.mcounts q2 .ret + ⟨0, 1, 0⟩
-  | _ => ⟨0, 1, 0⟩
+  | TRef2 T1 q1 T2 q2 | TFun T1 q1 T2 q2 | TAll T1 q1 T2 q2 | TProd T1 q1 T2 q2 =>
+    T1.mcounts q1 + T2.mcounts q2 + ⟨0, 1, 0⟩
+  | TList T1 => T1.mcounts ∅ + ⟨0, 1, 0⟩
+  | TTop | TNat | TUnit | TVar _ => ⟨0, 1, 0⟩
 
 def tm.mcounts : tm → MCountResult
-  | tref t => t.mcounts + ⟨1, 0, 0⟩
-  | tget t => t.mcounts + ⟨1, 0, 0⟩
-  | tput tr tx => tr.mcounts + tx.mcounts + ⟨1, 0, 0⟩
-  | tapp tf tx => tf.mcounts + tx.mcounts + ⟨1, 0, 0⟩
-  | tabs t => t.mcounts + ⟨1, 0, 0⟩
-  | tabsa T q t => T.mcounts q .arg + t.mcounts + ⟨1, 0, 0⟩
-  | ttapp tf T q => tf.mcounts + ⟨1, 0, 0⟩ + T.mcounts q .unk
-  | ttabs T q t => T.mcounts q .arg + t.mcounts + ⟨1, 0, 0⟩
-  | tanno t T q => t.mcounts + ⟨1, 0, 0⟩ + T.mcounts q .unk
-  | _ => ⟨1, 0, 0⟩
+  | tadd t1 t2 | tmul t1 t2 | tpair t1 t2 | tcons t1 t2 | tput t1 t2 | tapp t1 t2 =>
+    t1.mcounts + t2.mcounts + ⟨1, 0, 0⟩
+  | tref t | tget t | tfst t | tsnd t =>
+    t.mcounts + ⟨1, 0, 0⟩
+  | tabs none t | ttabs none t =>
+    t.mcounts + ⟨1, 0, 0⟩
+  | tabs (some (T, q)) t | ttabs (some (T, q)) t =>
+    T.mcounts q + t.mcounts + ⟨1, 0, 0⟩
+  | ttapp t T q => t.mcounts + ⟨1, 0, 0⟩ + T.mcounts q
+  | tanno t T q => t.mcounts + ⟨1, 0, 0⟩ + T.mcounts q
+  | tfold tl t0 t1 => tl.mcounts + t0.mcounts + t1.mcounts + ⟨1, 0, 0⟩
+  | tunit | tvar _ | tnil | tnat _ => ⟨1, 0, 0⟩
 
 namespace embedding
 
@@ -603,7 +729,7 @@ namespace embedding
 
 def check_program (e: ℕ → tm): M Unit :=
   qtrace "Stack trace:" do
-    let _ ← tinfer [] ∅ (e 0)
+    let _ ← tinfer' [] ∅ (e 0)
     return ()
 
 def bench_program (label: String) (e: ℕ → tm): M (String × Float × MCountResult × Stat) := do
@@ -645,7 +771,7 @@ macro_rules
 | `([rtterm| ⟪ $t ⟫]) => `(fun (n: ℕ) => $t n)
 | `([rtterm| ( $t:rtterm )]) => `([rtterm| $t])
 
-instance: Inhabited tm := ⟨tm.ttrue⟩
+instance: Inhabited tm := ⟨tm.tunit⟩
 
 def tm.tvar!: id → tm
   | %n => tm.tvar n

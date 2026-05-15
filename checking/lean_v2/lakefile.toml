@@ -1,13 +1,16 @@
-name = "lean4"
+name = "Lean4"
+version = "0.1.0"
+keywords = ["math"]
 defaultTargets = ["Lean4"]
 
 [leanOptions]
-pp.unicode.fun = true
+pp.unicode.fun = true # pretty-prints `fun a ↦ b`
+autoImplicit = true
 
 [[require]]
 name = "mathlib"
 scope = "leanprover-community"
-version = "git#v4.14.0"
+rev = "v4.27.0"
 
 [[lean_lib]]
 name = "Lean4"

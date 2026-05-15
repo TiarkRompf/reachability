@@ -1,990 +1,12 @@
 import Lean4.LangLemmas
+import Lean4.LRDefs
+import Aesop
 
 attribute [-simp] Set.setOf_subset_setOf Set.subset_inter_iff Set.union_subset_iff
+attribute [-simp] getElem?_pos Finset.singleton_union Finset.union_singleton
 
 namespace Reachability
-
-def tevaln M env e M' v :=
-  ∃ nm, ∀ n, n > nm → teval n M env e = .ok (nm, M', v)
-
--- locations
-
-abbrev pl := Set Nat
-abbrev pnat (n: ℕ): pl := {i | i < n}
-@[simp] abbrev pdom (l: List α): pl := pnat ‖l‖
-
-@[sets]
-theorem Set.subset_iff (a b: Set α):
-  a ⊆ b ↔ (∀⦃x⦄, x ∈ a → x ∈ b) :=
-by
-  simp only [Subset, LE.le, Set.Subset]
-
-@[simp]
-lemma pnat_subset_pnat:
-  pnat a ⊆ pnat b ↔ a ≤ b :=
-by
-  simp [sets]; apply Nat.le_of_forall_lt
-
-abbrev stty := List ((vl → pl → Prop) × pl)
-abbrev lenv := List ((stty → vl → pl → Prop) × pl)
-
-def var_locs (E: lenv) (x: ℕ): pl :=
-  match E[x]? with | some (_, vx) => vx | none => ∅
-
-def vars_locs (E: lenv) (q: ql): pl :=
-  {l | ∃ x, %x ∈ q ∧ l ∈ var_locs E x}
-
-lemma vars_locs_monotonic:
-  p ⊆ q →
-  vars_locs V p ⊆ vars_locs V q :=
-by
-  introv H; simp [sets, vars_locs] at *; tauto
-
-@[simp]
-lemma vars_locs_or:
-  vars_locs V (p ∪ q) = vars_locs V p ∪ vars_locs V q :=
-by
-  ext l; constructor <;> intro H <;> simp [vars_locs] at *
-  · obtain ⟨x, P | Q, LV⟩ := H
-    left; exists x; right; exists x
-  · obtain ⟨x, P, LV⟩ | ⟨x, Q, LV⟩ := H
-    exists x; tauto; exists x; tauto
-
-@[simp]
-lemma vars_locs_one (h: x < ‖V‖):
-  vars_locs V {%x} = V[x].2 :=
-by
-  simp [vars_locs, var_locs, h]
-
-@[simp]
-lemma vars_locs_shrink:
-  closed_ql.fvs ‖V‖ q →
-  vars_locs (V ++ V') q = vars_locs V q :=
-by
-  intro H; ext l; simp [vars_locs, var_locs]
-  congrm ∃ _, ?_; simp; intro H;
-  rw [List.getElem?_append_left]; tauto
-
-lemma vars_locs_and:
-  vars_locs V (p ∩ q) ⊆ vars_locs V p ∩ vars_locs V q :=
-by
-  simp [sets, vars_locs]; intros l x P Q H; split_ands
-  exists x; exists x
-
-@[simp]
-lemma vars_locs_if [Decidable a]:
-  vars_locs V (if a then b else c) = if a then vars_locs V b else vars_locs V c :=
-by
-  if h: a then simp [h] else simp [h]
-
-@[simp]
-lemma vars_locs_empty:
-  vars_locs V ∅ = ∅ :=
-by
-  simp [vars_locs]
-
-@[simp]
-lemma vars_locs_fresh:
-  vars_locs V {✦} = ∅ :=
-by
-  simp [vars_locs]
-
-@[simp]
-lemma vars_locs_bv:
-  vars_locs V {#n} = ∅ :=
-by
-  simp [vars_locs]
-
-@[simp]
-lemma vars_locs_sdiff_empty (h: vars_locs V q' = ∅):
-  vars_locs V (q \ q') = vars_locs V q :=
-by
-  simp only [Set.eq_empty_iff_forall_not_mem] at h
-  ext l; simp [vars_locs] at *; specialize h l
-  congrm ∃ _, ?_; simp; tauto
-
-lemma vars_locs_change_skip:
-  %x ∉ q →
-  vars_locs (V.set x l) q = vars_locs V q :=
-by
-  intro h; ext; simp [vars_locs, var_locs]
-  congrm ∃ _, ?_; simp; intro; rw [List.getElem?_set_ne]
-  rintro rfl; contradiction
-
-lemma vars_locs_change_congr:
-  V[x]? = some (vt, l) → l ⊆ l' →
-  vars_locs V q ⊆ vars_locs (V.set x (vt, l')) q :=
-by
-  intros H1 H2; simp [vars_locs, var_locs, sets]; intros _ x1 h1 h2
-  exists x1; split_ands'; by_cases h: x = x1
-  · subst x1; rw [List.getElem?_set_self]; simp [H1] at *; tauto
-    rw [List.getElem?_eq_some] at H1; tauto
-  · simpa [h]
-
-lemma vars_locs_open:
-  x < ‖V‖ →
-  closed_ql false 0 ‖V‖ q1 →
-  vars_locs V [%x ↦ q1] q = vars_locs (V.set x (vt, vars_locs V q1)) q :=
-by
-  intro L C; simp [subst]; generalize vars_locs V q1 = q1'
-  ext l; simp [vars_locs, var_locs]; constructor <;> intro H
-  · obtain ⟨x1, ⟨H1, H2⟩, H3⟩ | ⟨H1, H2⟩ := H
-    exists x1; split_ands'; rwa [List.getElem?_set_ne]; omega
-    exists x; split_ands'; simpa [L]
-  · obtain ⟨x1, H1, H2⟩ := H; simp [List.getElem?_set, L] at H2
-    if h: x = x1 then
-      right; subst x1; simp at H2; tauto
-    else
-      left; exists x1; simp [h] at H2; split_ands'; omega
-
-lemma vars_locs_splice:
-  vars_locs (V ++ (V1 ++ V')) (q.splice ‖V‖ ‖V1‖) = vars_locs (V ++ V') q :=
-by
-  ext l; simp [vars_locs, ql.splice, var_locs, id.splice]
-  constructor <;> intro h
-  · obtain ⟨x, ⟨a, h1a, h1b⟩, h2⟩ := h; split at h1b; swap; tauto
-    rename_i x; exists x; split_ands'
-    by_cases h1c: x < ‖V‖ <;> simp [h1c] at h1b <;> rw [←h1b] at h2
-    · simpa [List.getElem?_append, h1c] using h2
-    · simp at h1c; rw [←List.append_assoc] at h2
-      have h1c': ‖V ++ V1‖ ≤ x + ‖V1‖ := by simpa
-      simp only [List.getElem?_append_right, h1c, h1c'] at *
-      convert h2 using 3; simp; omega
-  · obtain ⟨x, h1, h2⟩ := h; exists if x < ‖V‖ then x else x + ‖V1‖; constructor
-    exists %x; simp; split_ands'; split <;> rfl
-    by_cases h: x < ‖V‖ <;> simp [h]
-    · simpa [List.getElem?_append, h] using h2
-    · rw [←List.append_assoc]; simp at h
-      have h': ‖V ++ V1‖ ≤ x + ‖V1‖ := by simpa
-      simp only [List.getElem?_append_right, h, h'] at *
-      convert h2 using 3; simp; omega
-
--- store typing
-
-def store_effect (S S1: stor) (p: pl) :=
-  ∀ l v,
-    l ∉ p → S[l]? = some v → S1[l]? = some v
-
-lemma se_trans:
-    store_effect S1 S2 p →
-    store_effect S2 S3 p →
-    store_effect S1 S3 p :=
-by
-  intros; simp [store_effect] at *; tauto
-
-lemma se_sub:
-    store_effect S1 S2 p →
-    p ⊆ p' →
-    store_effect S1 S2 p' :=
-by
-  intros H1 _; simp [store_effect] at *; intros _ _ _; apply H1; tauto
-
-lemma se_trans_sub:
-  store_effect S1 S2 p' →
-  store_effect S2 S3 p →
-  p ⊆ p' ∪ (pdom S1)ᶜ →
-  store_effect S1 S3 p' :=
-by
-  intros SE1 SE2 PP; simp [store_effect] at *
-  intros _ _ H1 H2; specialize SE1 _ _ H1 H2; apply SE2; assumption'
-  contrapose H1; simp at *; apply PP at H1; simp at H1; rcases H1 with H1 | H1
-  assumption; exfalso; rw [List.getElem?_eq_some] at H2; obtain ⟨H2, -⟩ := H2
-  omega
-
-@[simp] abbrev st_types (M: stty) := M
-@[simp] abbrev st_locs (M: stty): pl := pdom M
-
-def store_type (S: stor) (M: stty) :=
-  ‖M‖ = ‖S‖ ∧
-    (∀ l,
-      l ∈ st_locs M →
-      ∃ vt qt v ls,
-        M[l]? = some (vt, qt) ∧
-          S[l]? = some v ∧
-          vt v ls ∧
-          ls ⊆ qt ∧
-          qt ⊆ pnat l)
-
-def store_type.byM (st: store_type S M) (h: M[l]? = some (vt, qt)):
-  ∃ v ls, S[l]? = some v ∧ vt v ls ∧ ls ⊆ qt ∧ qt ⊆ pnat l :=
-by
-  obtain ⟨_, st⟩ := st; specialize st _ (List.getElem?_eq_some.1 h).1
-  obtain ⟨vt, qt, v, ls, h', st⟩ := st; exists v, ls
-  rw [h] at h'; injections; subst_vars; split_ands''
-
-@[simp] abbrev st_zero: stty := []
-
-@[simp] abbrev st_extend (M1: stty) (vt: vl → pl → Prop) (qt: pl): stty :=
-  M1++[(vt, qt)]
-
-lemma storet_extend:
-  store_type S M →
-  ls ⊆ qt →
-  vt v ls →
-  qt ⊆ st_locs M →
-  store_type (S++[v]) (st_extend M vt qt) :=
-by
-  rintro ⟨ST1, ST2⟩ LQ VT QM
-  constructor; simp [ST1]; intros l H; simp at H
-  if H: (l ∈ st_locs M) then
-    specialize (ST2 _ H); simp at H
-    simpa only [List.getElem?_append_left, H, (by omega: l < ‖S‖)]
-  else
-    have: l = ‖M‖ := by simp at H; omega
-    subst l; simp_arith only [ST1, List.length_append, List.length_singleton,
-      List.getElem?_eq_getElem, List.getElem_concat_length]
-    exists vt, qt, v, ls; split_ands'; simpa [ST1] using QM
-
-def st_chain (M: stty) (M1: stty) q :=
-  q ⊆ st_locs M ∧
-  q ⊆ st_locs M1 ∧
-  ∀ l, l ∈ q → M[l]? = M1[l]?
-
-inductive locs_locs_stty: stty → pl → pl where
-| lls_z: ∀M l ls,
-    l ∈ ls →
-    locs_locs_stty M ls l
-| lls_s: ∀M l l' v ls' ls,
-    l' ∈ ls →
-    M[l']? = some (v, ls') →
-    locs_locs_stty M ls' l →
-    locs_locs_stty M ls l
 open locs_locs_stty
-
-@[simp] abbrev st_chain_deep (M: stty) (M1: stty) q := st_chain M M1 (locs_locs_stty M q)
-
-@[simp] abbrev st_chain_full (M: stty) (M1: stty) := st_chain M M1 (st_locs M)
-
-@[simp] abbrev pstdiff (M' M: stty) := (st_locs M') \ (st_locs M)
-
-lemma stchain_chain:
-  st_chain M1 M2 q1 →
-  st_chain M2 M3 q2 →
-  st_chain M1 M3 (q1 ∩ q2) :=
-by
-  intros; simp [st_chain] at *; split_ands''
-  trans q1; simp; assumption
-  trans q2; simp; assumption
-  intros; simp_all
-
-lemma stchain_tighten:
-  st_chain M1 M2 q2 →
-  q1 ⊆ q2 →
-  st_chain M1 M2 q1 :=
-by
-  intros; simp [st_chain] at *; split_ands''
-  tauto; tauto; tauto
-
-lemma stchain_symm:
-  st_chain M1 M2 q1 →
-  st_chain M2 M1 q1 :=
-by
-  intros; simp [st_chain] at *
-  split_ands''; intros; symm; tauto
-
-@[simp]
-lemma lls_empty:
-  locs_locs_stty M ∅ = ∅ :=
-by
-  ext; simp; intro h; cases h
-  next h => simp at h
-  next h _ => simp at h
-
-lemma lls_mono:
-  q ⊆ q' →
-  locs_locs_stty M q ⊆ locs_locs_stty M q' :=
-by
-  intro H; intros l H1; cases H1 with
-  | lls_z => apply lls_z; tauto
-  | lls_s _ l' _ ls' _ LQ ML LLS =>
-    apply H at LQ; apply lls_s; assumption'
-
-lemma lls_closed:
-  store_type S M →
-  locs_locs_stty M q1 ⊆ q1 ∪ st_locs M :=
-by
-  rintro ST; intros l LM; simp
-  induction LM with
-  | lls_z => tauto
-  | lls_s l l' _ ls' ls _ ML LLS IH =>
-    right; rcases IH with IH | IH; assumption'
-    obtain ⟨-, -, -, -, -, LL⟩ := ST.byM ML
-    trans l'; tauto; rw [List.getElem?_eq_some] at ML; tauto
-
-lemma lls_closed':
-  store_type S M →
-  q1 ⊆ st_locs M →
-  locs_locs_stty M q1 ⊆ st_locs M :=
-by
-  intros h1 h2; trans; apply lls_closed h1; apply Set.union_subset
-  assumption; simp
-
-lemma lls_change:
-  st_chain_deep M M' q →
-  locs_locs_stty M q = locs_locs_stty M' q :=
-by
-  intro H; obtain ⟨-, -, H⟩ := H
-  ext l; constructor <;> intro H0
-  · induction H0 with
-    | lls_z => constructor; assumption
-    | lls_s l l' _ ls' ls _ ML _ IH =>
-      have: M[l']? = M'[l']? := by apply H; constructor; assumption
-      apply lls_s; assumption; rw [←this]; assumption
-      apply IH; intros; apply_rules [lls_s]
-  · induction H0 with
-    | lls_z => constructor; assumption
-    | lls_s l l' _ ls' ls _ ML _ IH =>
-      have: M[l']? = M'[l']? := by apply H; constructor; assumption
-      apply lls_s; assumption; rw [this]; assumption
-      apply IH; intros; apply_rules [lls_s]; rwa [this]
-
--- value interpretation
-
-def vtnone (M: stty) (_: vl) (ls: pl): Prop := ls ⊆ st_locs M
-
-def val_type (M:stty) (V:lenv) (v: vl) (T: ty) (ls: pl): Prop :=
-  match v, T with
-  | _, .TTop =>
-    ls ⊆ st_locs M
-  | .vbool _, .TBool =>
-    ls ⊆ st_locs M
-  | .vref l, .TRef T q =>
-    closed_ty 0 ‖V‖ T ∧
-    l ∈ ls ∧
-    closed_ql false 1 ‖V‖ q ∧
-    ls ⊆ st_locs M ∧
-    ∃ vt qt,
-      M[l]? = some (vt, qt) ∧
-      qt ⊆ vars_locs (V ++ [(vtnone, ls)]) [#0 ↦ %‖V‖] q ∧
-      vars_locs V q ⊆ qt ∧
-      (∀ v lsv,
-          lsv ⊆ qt →
-          (vt v lsv ↔ val_type M V v T lsv))
-  | .vabs G ty, .TFun T1 q1 T2 q2 =>
-    closed_ty 1 ‖V‖ T1 ∧
-    closed_ql true 1 ‖V‖ q1 ∧
-    closed_ty 2 ‖V‖ T2 ∧
-    closed_ql true 2 ‖V‖ q2 ∧
-    (#0 ∈ q1 → ✦ ∈ q1) ∧
-    occurs .no_covariant T1 #0 ∧
-    occurs .no_contravariant T2 #0 ∧
-    ls ⊆ st_locs M ∧
-    -- vars_locs V q1 ⊆ ls ∧
-    (∀ ⦃S' M' vx lsx⦄,
-      st_chain_deep M M' ls →
-      store_type S' M' →
-      val_type M' (V ++ [(vtnone, ls)]) vx ([#0 ↦ %‖V‖] T1) lsx →
-      lsx ⊆ vars_locs (V ++ [(vtnone, ls)]) [#0 ↦ %‖V‖] q1 ∪ ?[✦ ∈ q1] lsᶜ →
-      ∃ S'' M'' vy lsy,
-        tevaln S' (G ++ [v, vx]) ty S'' vy ∧
-        st_chain_full M' M'' ∧
-        store_type S'' M'' ∧
-        store_effect S' S'' (ls ∪ lsx) ∧
-        val_type M'' (V ++ [(vtnone, ls), (vtnone, lsx)]) vy ([#0 ↦ %‖V‖] [#1 ↦ %(‖V‖ + 1)] T2) lsy ∧
-        lsy ⊆ vars_locs (V ++ [(vtnone, ls), (vtnone, lsx)]) [#0 ↦ %‖V‖] [#1 ↦ %(‖V‖ + 1)] q2 ∪ ?[✦ ∈ q2] (st_locs M')ᶜ)
-  | _, .TVar (%x) =>
-    ls ⊆ st_locs M ∧ ∃ vt ls0, V[x]? = some (vt, ls0) ∧
-    ∀ls' M', ls ⊆ ls' → st_chain_deep M M' ls → ls' ⊆ st_locs M' → vt M' v ls'
-  | .vtabs G ty, .TAll T1 q1 T2 q2 =>
-    closed_ty 1 ‖V‖ T1 ∧
-    closed_ql true 1 ‖V‖ q1 ∧
-    closed_ty 2 ‖V‖ T2 ∧
-    closed_ql true 2 ‖V‖ q2 ∧
-    (#0 ∈ q1 → ✦ ∈ q1) ∧
-    occurs .no_covariant T1 #0 ∧
-    occurs .no_contravariant T2 #0 ∧
-    ls ⊆ st_locs M ∧
-    (∀ ⦃S' M' vt lsx⦄,
-      st_chain_deep M M' ls →
-      store_type S' M' →
-      (∀ ⦃S M v lsx⦄, store_type S M → vt M v lsx →
-        val_type M (V ++ [(vtnone, ls)]) v ([#0 ↦ %‖V‖] T1) lsx) →
-      lsx ⊆ st_locs M' →
-      lsx ⊆ vars_locs (V ++ [(vtnone, ls)]) [#0 ↦ %‖V‖] q1 ∪ ?[✦ ∈ q1] lsᶜ →
-      ∃ S'' M'' vy lsy,
-        tevaln S' (G ++ [v, .vbool false]) ty S'' vy ∧
-        st_chain_full M' M'' ∧
-        store_type S'' M'' ∧
-        store_effect S' S'' (ls ∪ lsx) ∧
-        val_type M'' (V ++ [(vtnone, ls), (vt, lsx)]) vy ([#0 ↦ %‖V‖] [#1 ↦ %(‖V‖ + 1)] T2) lsy ∧
-        lsy ⊆ vars_locs (V ++ [(vtnone, ls), (vt, lsx)]) [#0 ↦ %‖V‖] [#1 ↦ %(‖V‖ + 1)] q2 ∪ ?[✦ ∈ q2] (st_locs M')ᶜ)
-  | _,_ =>
-    False
-termination_by ty_size T
-decreasing_by all_goals simp_wf; simp! <;> omega
-
-lemma valt_wf:
-  val_type M V v T ls →
-  ls ⊆ st_locs M ∧ closed_ty 0 ‖V‖ T :=
-by
-  intro VT; dsimp
-  induction M, V, v, T, ls using val_type.induct <;> simp [val_type] at VT
-  split_ands'; split_ands'; split_ands''; split_ands''
-  split_ands''; rename ∃_, _ => h; obtain ⟨_, ⟨_, h⟩, -⟩ := h
-  rw [List.getElem?_eq_some] at h; simp! [h.1]; split_ands''
-
-lemma valt_store_change:
-  val_type M V v T ls →
-  st_chain_deep M M' ls →
-  val_type M' V v T ls :=
-by
-  intros H1 H2
-  have: ∀ M ls, ls ⊆ locs_locs_stty M ls := by
-    intro M ls l H; constructor; assumption
-  have M0 := M  -- trick: pre-generalize M for val_type.induct
-  induction M0, V, v, T, ls using val_type.induct generalizing M M'
-  all_goals simp only [val_type] at H1 ⊢
-  · dsimp [st_chain] at H2; tauto
-  · dsimp [st_chain] at H2; tauto
-  next _ V ls /-.vref-/ l /-.TRef-/ T q IH =>
-    have H2' := H2; obtain ⟨-, _, H⟩ := H2'
-    obtain ⟨_, _, _, _, H1⟩ := H1; split_ands'; tauto
-    have: l ∈ locs_locs_stty M ls := by solve_by_elim
-    rw [H] at H1; assumption'
-    obtain ⟨vt, qt, ML, _, _, H1⟩ := H1; exists vt, qt; split_ands'
-    intros _ lsv _; rw [H1]; assumption'
-    have: st_chain_deep M M' lsv := by
-      apply stchain_tighten; assumption
-      trans; apply lls_mono; assumption
-      intros _ _; apply lls_s; swap; rw [H]; assumption'
-    constructor <;> intro V
-    · apply IH; assumption'
-    · apply IH; assumption'; apply stchain_symm
-      rwa [←lls_change]; assumption
-  next /-.vabs-/ /-.TFun-/ =>
-    split_ands''; dsimp [st_chain] at H2; tauto
-    rename_i H; intros; apply H; assumption'
-    apply stchain_tighten; apply stchain_chain; assumption'
-    rw [←lls_change H2]; solve_by_elim
-  next /-.TVar-/ =>
-    obtain ⟨H0, vt, ls0, VX, H1⟩ := H1; split_ands
-    simp [st_chain] at H2; trans; apply this; swap; exact H2.2.1
-    exists vt, ls0; simp [VX]; introv h1 h2 h3; apply H1; assumption'
-    eapply stchain_tighten; eapply stchain_chain; assumption'
-    apply Set.subset_inter; simp; rwa [lls_change]
-  next /-.vtabs-/ /-.TAll-/ =>
-    split_ands''; dsimp [st_chain] at H2; tauto
-    rename_i H; intros; apply H; assumption'
-    apply stchain_tighten; apply stchain_chain; assumption'
-    rw [←lls_change H2]; simp
-
-lemma valt_splice
-  (C: closed_ty 0 ‖V ++ V'‖ T):
-  val_type M (V ++ V0 ++ V') v (T.splice ‖V‖ ‖V0‖) ls ↔
-    val_type M (V ++ V') v T ls :=
-by
-  simp; induction T using ty.induct' generalizing M V' v ls <;> simp!
-  · simp only [val_type]
-  · cases v <;> simp only [val_type]
-  case TRef T q IH =>
-    cases v <;> simp only [val_type]
-    simp! at C; cases C; rename_i C1 C2
-    congrm ?_ ∧ _ ∧ ?_ ∧ _ ∧ ?_
-    · have C1' := closedty_splice C1 ‖V‖ ‖V0‖
-      simp at C1 C1'; simp [C1]; convert C1' using 1; omega
-    · have C2' := closedql_splice C2 ‖V‖ ‖V0‖
-      simp at C2 C2'; simp [C2]; convert C2' using 1; omega
-    simp; congrm ∃ vt qt, _ ∧ _ ⊆ ?_ ∧ ?_ ⊆ _ ∧ ∀ v lsx h, _ ↔ ?_
-    · conv => right; rw [←vars_locs_splice (V1 := V0)]
-      simp; congr!; split <;> simp <;> omega
-    · simp [vars_locs_splice]
-    · rw [IH]; simp; simpa
-  case TFun T1 q1 T2 q2 IH1 IH2 =>
-    cases v <;> simp only [val_type]
-    simp! at C; obtain ⟨C1, C3, C2, C4, _⟩ := C
-    congrm ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ _ ∧ ?_
-    · have C1' := closedty_splice C1 ‖V‖ ‖V0‖
-      simp at C1 C1'; simp [C1]; convert C1' using 1; omega
-    · have C2' := closedql_splice C2 ‖V‖ ‖V0‖
-      simp at C2 C2'; simp [C2]; convert C2' using 1; omega
-    · have C3' := closedty_splice C3 ‖V‖ ‖V0‖
-      simp at C3 C3'; simp [C3]; convert C3' using 1; omega
-    · have C4' := closedql_splice C4 ‖V‖ ‖V0‖
-      simp at C4 C4'; simp [C4]; convert C4' using 1; omega
-    simp; simp; simp
-    congrm ∀ S' M' vx lsx _ _, ?_ → _ ⊆ ?_ → ?_
-    · simp; rw [←IH1 (V' := V' ++ [(vtnone, ls)])]; simp; congr!
-      split <;> simp <;> omega
-      simp; apply subst_tighten; c_extend; simp [sets]
-    · simp; congr; conv => right; rw [←vars_locs_splice (V1 := V0)]
-      simp; congr!; split <;> simp <;> omega
-    congrm ∃ _ _ _ _, _ ∧ _ ∧ _ ∧ _ ∧ ?_ ∧ _ ⊆ ?_
-    · simp; rw [←IH2 (V' := V' ++ [(vtnone, ls), (vtnone, lsx)])]; simp; congr!
-      split <;> simp <;> omega; split <;> simp <;> omega
-      simp; repeat apply subst_tighten
-      c_extend; simp [sets]; omega; simp [sets]
-    · simp; congr; conv => right; rw [←vars_locs_splice (V1 := V0)]
-      simp; congr!
-      split <;> simp <;> omega; split <;> simp <;> omega
-  case TVar x =>
-    cases x <;> simp [id.splice, val_type]; rename_i x
-    split <;> rename_i h <;> simp [val_type] <;> intro <;> congr! 6
-    simp [List.getElem?_append_left, h]
-    simp [List.getElem?_append_right, (by omega: ‖V‖ ≤ x), (by omega: ‖V‖ ≤ x + ‖V0‖)]
-    rw [List.getElem?_append_right]; congr! 1; omega; omega
-  case TAll T1 q1 T2 q2 IH1 IH2 =>
-    cases v <;> simp only [val_type]
-    simp! at C; obtain ⟨C1, C3, C2, C4, _⟩ := C
-    congrm ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ _ ∧ ?_
-    · have C1' := closedty_splice C1 ‖V‖ ‖V0‖
-      simp at C1 C1'; simp [C1]; convert C1' using 1; omega
-    · have C2' := closedql_splice C2 ‖V‖ ‖V0‖
-      simp at C2 C2'; simp [C2]; convert C2' using 1; omega
-    · have C3' := closedty_splice C3 ‖V‖ ‖V0‖
-      simp at C3 C3'; simp [C3]; convert C3' using 1; omega
-    · have C4' := closedql_splice C4 ‖V‖ ‖V0‖
-      simp at C4 C4'; simp [C4]; convert C4' using 1; omega
-    simp; simp; simp
-    congrm ∀ S' M' vt lsx _ _, ?_ → _ → _ ⊆ ?_ → ?_
-    · congrm ∀ S M v lsx, _ → _ → ?_
-      simp; rw [←IH1 (V' := V' ++ [(vtnone, ls)])]; simp; congr!
-      split <;> simp <;> omega
-      simp; apply subst_tighten; c_extend; simp [sets]
-    · simp; congr; conv => right; rw [←vars_locs_splice (V1 := V0)]
-      simp; congr!; split <;> simp <;> omega
-    congrm ∃ _ _ _ _, _ ∧ _ ∧ _ ∧ _ ∧ ?_ ∧ _ ⊆ ?_
-    · simp; rw [←IH2 (V' := V' ++ [(vtnone, ls), (vt, lsx)])]; simp; congr!
-      split <;> simp <;> omega; split <;> simp <;> omega
-      simp; repeat apply subst_tighten
-      c_extend; simp [sets]; omega; simp [sets]
-    · simp; congr; conv => right; rw [←vars_locs_splice (V1 := V0)]
-      simp; congr!
-      split <;> simp <;> omega; split <;> simp <;> omega
-
-lemma valt_extend:
-  closed_ty 0 ‖V‖ T →
-  val_type M (V ++ V') v T ls = val_type M V v T ls :=
-by
-  intros C; have: V = V ++ [] := by simp
-  have C': closed_ty 0 ‖V ++ []‖ T := by simpa
-  conv => right; rw [this, ←valt_splice (V0 := V') C']
-  simp; congr!; rw [ty.splice_self]; assumption
-
-lemma valt_lenv_change:
-  occurs .noneq T %x ∨
-    occurs .no_contravariant T %x ∧ l ⊆ l' ∨
-    occurs .no_covariant T %x ∧ l' ⊆ l →
-  V[x]? = some (vt, l) →
-  val_type M V v T ls →
-  val_type M (V.set x (vt, l')) v T ls :=
-by
-  -- mutual_induct won't help this time: they aren't substq-aware
-  intro H2 H1 H; induction T using ty.induct' generalizing M V v ls l l'
-  case TTop =>
-    simpa only [val_type] using H
-  case TBool =>
-    cases v <;> simp only [val_type] at H ⊢; assumption
-  case TRef T1 q1 IH =>
-    cases v <;> simp only [val_type, List.length_set] at H ⊢
-    have H1' := (List.getElem?_eq_some.1 H1).1
-    replace H2: occurs .noneq T1 %x ∧ %x ∉ q1 := by
-      simp! at H2; clear * - H2
-      obtain h | h | h := H2 <;> simp [h] <;> apply occurs_none <;> simp [h]
-    split_ands''; rename_i H
-    rw [←List.set_append_left, vars_locs_change_skip, vars_locs_change_skip]
-    assumption'; obtain ⟨vt, qt, H⟩ := H; exists vt, qt; split_ands''
-    rename_i H; intros; rw [H]; assumption'; constructor <;> intro H
-    · apply IH; simp; tauto; assumption'
-    · apply IH (l' := l) at H; convert H; simp [H1]; simp; tauto
-      rw [List.getElem?_set_self]; simpa
-    · simp [subst]; split_ands'; omega
-  case TFun T1 q1 T2 q2 IH1 IH2 =>
-    cases v <;> simp only [val_type, List.length_set] at H ⊢
-    have H1' := (List.getElem?_eq_some.1 H1).1
-    simp! at H2
-    split_ands''; rename_i _ Cq1 _ Cq2 _ _ _ _ H; intros _ _ vx lsx CH ST VX QX
-    specialize @H _ _ vx lsx CH ST _ _
-    · -- VTX
-      rw [←List.set_append_left] at VX; apply IH1 (l' := l) at VX; convert VX
-      suffices (V ++ [(vtnone, ls)])[x]? = some (vt, l) by simp [this]
-      simp [H1, List.getElem?_append, H1']; simp; swap
-      suffices x < ‖V‖ + 1 by simp [this]; rfl
-      omega; assumption'; rcases H2 with ⟨_, -⟩ | ⟨⟨_, -⟩, _⟩ | ⟨⟨_, -⟩, _⟩
-      · left; simp; split_ands'; clear * - H1'; omega
-      · right; right; simp; split_ands'; clear * - H1'; omega
-      · right; left; simp; split_ands'; clear * - H1'; omega
-    · -- VQX
-      trans; assumption; simp [subst, Cq1.hfvs]; gcongr; rcases H2 with H2 | H2 | H2
-      · rw [vars_locs_change_skip]; clear *- H2; tauto
-      · rw [vars_locs_change_skip]; clear *- H2; tauto
-      · trans; apply vars_locs_change_congr (x := x); simp [H1']
-        exact ⟨rfl, rfl⟩; exact H2.2; simp [H1]
-    obtain ⟨S2, M2, vy, lsy, _⟩ := H; exists S2, M2, vy, lsy; split_ands''
-    · -- VTY
-      rw [←List.set_append_left]; apply IH2; simp; swap
-      simp [List.getElem?_append, H1, H1']; rfl; assumption'
-      rcases H2 with ⟨-, -, _, -⟩ | ⟨⟨-, -, _⟩, _⟩ | ⟨⟨-, _, -⟩, _⟩
-      · left; simp; split_ands' <;> clear * - H1' <;> omega
-      · right; left; simp; split_ands' <;> clear * - H1' <;> omega
-      · right; right; simp; split_ands' <;> clear * - H1' <;> omega
-    · -- VQY
-      trans; assumption; simp [subst, List.getElem_append_right, Cq2.hfvs]
-      gcongr; rcases H2 with H2 | H2 | H2
-      · rw [vars_locs_change_skip]; clear *- H2; tauto
-      · apply vars_locs_change_congr; assumption; tauto
-      · rw [vars_locs_change_skip]; clear *- H2; tauto
-  case TVar x =>
-    cases x <;> simp only [val_type] at H ⊢; rename_i x'; simp! at H2
-    obtain ⟨h1, vt0, ls0, H, h2⟩ := H; simp only [h1, true_and]
-    by_cases h: x = x'; subst x'; simp [H1] at H; rcases H with ⟨rfl, rfl⟩
-    exists vt, l'; split_ands'; rw [List.getElem?_set_self]
-    rw [List.getElem?_eq_some] at H1; exact H1.1
-    exists vt0, ls0; split_ands'; rwa [List.getElem?_set_ne]; simp [h]
-  case TAll T1 q1 T2 q2 IH1 IH2 =>
-    cases v <;> simp only [val_type, List.length_set] at H ⊢
-    have H1' := (List.getElem?_eq_some.1 H1).1
-    simp! at H2
-    split_ands''; rename_i _ Cq1 _ Cq2 _ _ _ _ H; intros _ _ vx lsx CH ST VX VX' QX
-    specialize @H _ _ vx lsx CH ST _ VX' _
-    · -- VTX
-      introv ST VT; specialize VX ST VT
-      rw [←List.set_append_left] at VX; apply IH1 (l' := l) at VX; convert VX
-      suffices (V ++ [(vtnone, ls)])[x]? = some (vt, l) by simp [this]
-      simp [H1, List.getElem?_append, H1']; simp; swap
-      suffices x < ‖V‖ + 1 by simp [this]; rfl
-      omega; assumption'; rcases H2 with ⟨_, -⟩ | ⟨⟨_, -⟩, _⟩ | ⟨⟨_, -⟩, _⟩
-      · left; simp; split_ands'; clear * - H1'; omega
-      · right; right; simp; split_ands'; clear * - H1'; omega
-      · right; left; simp; split_ands'; clear * - H1'; omega
-    · -- VQX
-      trans; assumption; simp [subst, Cq1.hfvs]; gcongr; rcases H2 with H2 | H2 | H2
-      · rw [vars_locs_change_skip]; clear *- H2; tauto
-      · rw [vars_locs_change_skip]; clear *- H2; tauto
-      · trans; apply vars_locs_change_congr (x := x); simp [H1']
-        exact ⟨rfl, rfl⟩; exact H2.2; simp [H1]
-    obtain ⟨S2, M2, vy, lsy, _⟩ := H; exists S2, M2, vy, lsy; split_ands''
-    · -- VTY
-      rw [←List.set_append_left]; apply IH2; simp; swap
-      simp [List.getElem?_append, H1, H1']; rfl; assumption'
-      rcases H2 with ⟨-, -, _, -⟩ | ⟨⟨-, -, _⟩, _⟩ | ⟨⟨-, _, -⟩, _⟩
-      · left; simp; split_ands' <;> clear * - H1' <;> omega
-      · right; left; simp; split_ands' <;> clear * - H1' <;> omega
-      · right; right; simp; split_ands' <;> clear * - H1' <;> omega
-    · -- VQY
-      trans; assumption; simp [subst, List.getElem_append_right, Cq2.hfvs]
-      gcongr; rcases H2 with H2 | H2 | H2
-      · rw [vars_locs_change_skip]; clear *- H2; tauto
-      · apply vars_locs_change_congr; assumption; tauto
-      · rw [vars_locs_change_skip]; clear *- H2; tauto
-
-def valt_change_noneq {T l V M v ls} x vt l' h h1 :=
-  @valt_lenv_change T x l l' V vt M v ls (.inl h) h1
-def valt_change_no_contra {T l V M v ls} x vt l' h h2 h1 :=
-  @valt_lenv_change T x l l' V vt M v ls (.inr (.inl ⟨h, h1⟩)) h2
-def valt_change_no_covari {T l V M v ls} x vt l' h h2 h1 :=
-  @valt_lenv_change T x l l' V vt M v ls (.inr (.inr ⟨h, h1⟩)) h2
-
-lemma valt_grow:
-  val_type M V v T ls →
-  ls ⊆ ls' →
-  ls' ⊆ st_locs M →
-  val_type M V v T ls' :=
-by
-  intros H1 H2 H3; cases T
-  case TTop =>
-    simp only [val_type] at H1 ⊢; tauto
-  case TBool =>
-    cases v <;> simp only [val_type] at H1 ⊢; tauto
-  case TRef T q =>
-    cases v <;> simp only [val_type] at H1 ⊢
-    split_ands''; tauto; rename_i C _ H
-    obtain ⟨vt, qt, _⟩ := H; exists vt, qt; split_ands''
-    rename_i H _ _; trans; assumption
-    by_cases h: #0 ∈ q <;> simp [subst, h, C.hfvs]; gcongr
-  case TFun T1 q1 T2 q2 =>
-    cases v <;> simp only [val_type] at H1 ⊢
-    split_ands''; rename_i Ct1 Cq1 Ct2 Cq2 FF _ _ _ H; intros _ _ vx lsx CH ST VX QX
-    specialize @H _ _ vx lsx _ ST _ _
-    · apply stchain_tighten; assumption; apply lls_mono; assumption
-    · apply valt_change_no_covari ‖V‖ vtnone ls at VX; simpa using VX
-      simp; split_ands'; c_free; simp; rfl; assumption
-    · trans; assumption; apply Set.union_subset; simp [subst, Cq1.hfvs]
-      by_cases h: #0 ∈ q1; swap; simp [h]
-      specialize FF h; simp [FF, h]; intros _ _; simp; clear * -; tauto
-      by_cases h: ✦ ∈ q1 <;> simp [h]; simp [sets]; clear * - H2; tauto
-    obtain ⟨S2, M2, vy, lsy, H⟩ := H; exists S2, M2, vy, lsy; split_ands''
-    · apply se_sub; assumption; gcongr
-    · rename_i VY _; apply valt_change_no_contra ‖V‖ vtnone ls' at VY; simpa using VY
-      simp; split_ands'; c_free; simp [List.getElem_append_right]; rfl; assumption
-    · trans; assumption; simp [subst, List.getElem_append_right, Cq2.hfvs]
-      gcongr; by_cases h: #0 ∈ q2 <;> simp [h]; assumption
-  case TVar x =>
-    cases x <;> simp only [val_type] at H1 ⊢; split_ands''; rename_i H
-    obtain ⟨vt0, ls0, _, H⟩ := H; exists vt0, ls0; split_ands'
-    introv h1 h2 h3; apply H; assumption'; trans; exact H2; assumption
-    apply stchain_tighten; assumption; apply lls_mono; assumption
-  case TAll T1 q1 T2 q2 =>
-    cases v <;> simp only [val_type] at H1 ⊢
-    split_ands''; rename_i Ct1 Cq1 Ct2 Cq2 FF _ _ _ H; intros _ _ vx lsx CH ST VX VX' QX
-    specialize @H _ _ vx lsx _ ST _ VX' _
-    · apply stchain_tighten; assumption; apply lls_mono; assumption
-    · introv ST VT; specialize VX ST VT
-      apply valt_change_no_covari ‖V‖ vtnone ls at VX; simpa using VX
-      simp; split_ands'; c_free; simp; rfl; assumption
-    · trans; assumption; apply Set.union_subset; simp [subst, Cq1.hfvs]
-      by_cases h: #0 ∈ q1; swap; simp [h]
-      specialize FF h; simp [FF, h]; intros _ _; simp; clear * -; tauto
-      by_cases h: ✦ ∈ q1 <;> simp [h]; simp [sets]; clear * - H2; tauto
-    obtain ⟨S2, M2, vy, lsy, H⟩ := H; exists S2, M2, vy, lsy; split_ands''
-    · apply se_sub; assumption; gcongr
-    · rename_i VY _; apply valt_change_no_contra ‖V‖ vtnone ls' at VY; simpa using VY
-      simp; split_ands'; c_free; simp [List.getElem_append_right]; rfl; assumption
-    · trans; assumption; simp [subst, List.getElem_append_right, Cq2.hfvs]
-      gcongr; by_cases h: #0 ∈ q2 <;> simp [h]; assumption
-
-lemma valt_subst:
-  x < ‖V‖ →
-  closed_ty 0 ‖V‖ t →
-  closed_ql false 0 ‖V‖ q →
-  store_type S M →
-  (val_type M V v ([%x ↦ (t, q)] T) ls ↔
-    val_type M (V.set x ((val_type · V · t ·), vars_locs V q)) v T ls) :=
-by
-  intros H1 H2t H2 ST; induction T using ty.induct' generalizing S M V v ls t q
-  case TTop =>
-    simp [val_type]
-  case TBool =>
-    simp; cases v <;> simp [val_type]
-  case TRef T1 q1 IH =>
-    simp; cases v <;> simp only [val_type, List.length_set]
-    congrm ?_ ∧ _ ∧ ?_ ∧ _ ∧ ∃ vt qt, _ ∧ qt ⊆ ?_ ∧ ?_ ⊆ qt ∧ ∀ v lsv h, _ ↔ ?_
-    · rw [closedty_subst]; assumption'; simpa
-    · rw [closedql_subst]; c_extend; simpa
-    · simp; rw [ql.subst_comm]; rotate_left; simp; omega; c_free; simp
-      rw [vars_locs_open]; simp [H1, H2.hfvs]; rfl; simp; omega; simp; c_extend;
-    · rwa [vars_locs_open]; assumption
-    · rw [IH]; simp; assumption'
-  case TFun T1 q1 T2 q2 IH1 IH2 =>
-    simp; cases v <;> simp only [val_type, List.length_set]
-    have H2': closed_ql true 0 ‖V‖ q := by c_extend;
-    congrm ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ _ ∧ ?_
-    · rw [closedty_subst]; assumption'; simpa
-    · rw [closedql_subst]; c_extend; simpa
-    · rw [closedty_subst]; assumption'; simpa
-    · rw [closedql_subst]; c_extend; simpa
-    · simp [subst, (by c_free H2: ✦ ∉ q), (by c_free: #0 ∉ q)]
-    · rw [occurs_subst]; simp; c_free; c_free;
-    · rw [occurs_subst]; simp; c_free; c_free;
-    have Hx: x ≠ ‖V‖ := (by omega); have Hx1: x ≠ ‖V‖ + 1 := (by omega)
-    have H2': ∀n, closed_ql false 0 (‖V‖ + n) q := by intros; c_extend H2
-    congrm ∀ S' M' vx lsx _ ST', ?_ → _ ⊆ ?_ → ?_
-    · rw [ty.open_subst_comm, IH1]; simp [H1, H2.hfvs, H2t, valt_extend]
-      simp; exact S'; simp; omega; simp; c_extend; simp; c_extend H2; assumption
-      simp [Hx]; c_free; c_free; simp
-    · congr 2; simp [ql.subst_comm (x2 := %x), Hx, (by c_free: #0 ∉ q)]
-      rw [vars_locs_open]; simp [H2.hfvs, H1]; rfl; simp; omega; simp; apply H2'
-      simp [subst]; rintro - h; absurd h; c_free H2;
-    congrm ∃ S'' M'' vy lsy, ?_; simp; intros; congrm ?_ ∧ _ ⊆ ?_
-    · rw [ty.open_subst_comm, ty.open_subst_comm, IH2]; simp [H1, H2.hfvs]
-      simp [H2t, valt_extend]; simp; exact S''; simp; omega; simp; c_extend; simp; c_extend H2
-      assumption; simp [Hx]; c_free; c_free; simp; simp [Hx1]
-      c_free; c_free; simp
-    · congr 2; simp [ql.subst_comm (x2 := %x), Hx, Hx1, (by intro; c_free: ∀n, #n ∉ q)]
-      rw [vars_locs_open]; simp [H2.hfvs, H1]; rfl; simp; omega; simp; apply H2'
-      simp [subst]; rintro - h; absurd h; c_free H2;
-  case TVar x =>
-    cases x <;> simp only [val_type]; simp [val_type]; simp [val_type]
-    simp; split; subst x; simp [List.getElem?_set_self, H1]; constructor
-    · intro h; split_ands; apply valt_wf at h; simp [h]
-      intros; apply valt_grow (ls := ls); apply valt_store_change; assumption'
-    · rintro ⟨h1, h2⟩; specialize h2 ls M _ _ h1; simp
-      simp [st_chain]; apply lls_closed'; assumption'
-    simp only [val_type]; rename_i h; simp [List.getElem?_set_ne, h]
-  case TAll T1 q1 T2 q2 IH1 IH2 =>
-    simp; cases v <;> simp only [val_type, List.length_set]
-    have H2': closed_ql true 0 ‖V‖ q := by c_extend;
-    congrm ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ ?_ ∧ _ ∧ ?_
-    · rw [closedty_subst]; assumption'; simpa
-    · rw [closedql_subst]; c_extend; simpa
-    · rw [closedty_subst]; assumption'; simpa
-    · rw [closedql_subst]; c_extend; simpa
-    · simp [subst, (by c_free H2: ✦ ∉ q), (by c_free: #0 ∉ q)]
-    · rw [occurs_subst]; simp; c_free; c_free;
-    · rw [occurs_subst]; simp; c_free; c_free;
-    have Hx: x ≠ ‖V‖ := (by omega); have Hx1: x ≠ ‖V‖ + 1 := (by omega)
-    have H2': ∀n, closed_ql false 0 (‖V‖ + n) q := by intros; c_extend H2
-    congrm ∀ S' M' vx lsx _ ST', ?_ → _ → _ ⊆ ?_ → ?_
-    · congrm ∀ S' M' v lsx ST VT, ?_
-      rw [ty.open_subst_comm, IH1]; simp [H1, H2.hfvs, H2t, valt_extend]
-      simp; exact S'; simp; omega; simp; c_extend; simp; c_extend H2; assumption
-      simp [Hx]; c_free; c_free; simp
-    · congr 2; simp [ql.subst_comm (x2 := %x), Hx, (by c_free: #0 ∉ q)]
-      rw [vars_locs_open]; simp [H2.hfvs, H1]; rfl; simp; omega; simp; apply H2'
-      simp [subst]; rintro - h; absurd h; c_free H2;
-    congrm ∃ S'' M'' vy lsy, ?_; simp; intros; congrm ?_ ∧ _ ⊆ ?_
-    · rw [ty.open_subst_comm, ty.open_subst_comm, IH2]; simp [H1, H2.hfvs]
-      simp [H2t, valt_extend]; simp; exact S''; simp; omega; simp; c_extend; simp; c_extend H2
-      assumption; simp [Hx]; c_free; c_free; simp; simp [Hx1]
-      c_free; c_free; simp
-    · congr 2; simp [ql.subst_comm (x2 := %x), Hx, Hx1, (by intro; c_free: ∀n, #n ∉ q)]
-      rw [vars_locs_open]; simp [H2.hfvs, H1]; rfl; simp; omega; simp; apply H2'
-      simp [subst]; rintro - h; absurd h; c_free H2;
-
-lemma valt_subst':
-  V[x]? = some (vtx, lsx) →
-  closed_ty 0 ‖V‖ t →
-  closed_ql true 0 ‖V‖ q →
-  store_type S M →
-  vtx = (val_type · V · t ·) →
-  occurs .noneq T %x ∨ ✦ ∉ q ∧ lsx = vars_locs V q →
-  (val_type M V v ([%x ↦ (t, q)] T) ls ↔ val_type M V v T ls) :=
-by
-  intro VX CT CQ ST HT HQ; have := (List.getElem?_eq_some.1 VX).1
-  obtain HQ | ⟨h, HQ⟩ := HQ
-  · rw [ty.subst_free HQ, valt_subst, ←HT]; simp; assumption'; swap; simp [sets]
-    constructor <;> intro h
-    · apply valt_change_noneq x vtx lsx at h
-      simp [List.set_getElem?_self, VX] at h; assumption'
-      simp [this]; rfl
-    · apply valt_change_noneq; assumption'
-  · subst vtx lsx; rw [valt_subst]; assumption'; congr!
-    rwa [List.set_getElem?_self]; apply closedql_fr_tighten; assumption'
-
--- environment interpretation
-
-@[simp]
-def env_qual G V p :=
-  ∀ q q',
-    q ⊆ p ∪ {✦} →
-    q' ⊆ p ∪ {✦} →
-    (vars_trans G q) ∩ (vars_trans G q') ⊆ p ∪ {✦} →
-    (vars_locs V q) ∩ (vars_locs V q') ⊆
-      vars_locs V ((vars_trans G q) ∩ (vars_trans G q'))
-
-@[simp]
-def env_cell M V (p: ql) x T q (bn: binding) v (vt: stty → vl → pl → Prop) ls :=
-  closed_ty 0 x T ∧
-  closed_ql true 0 x q ∧
-  (bn = .tvar → ∀ ⦃S M v ls⦄, store_type S M →
-    vt M v ls → val_type M V v T ls) ∧
-  (%x ∈ p →
-    let T' := if bn = .tvar then .TTop else T
-    val_type M V v T' ls) ∧
-  (✦ ∉ q → ls ⊆ vars_locs V q) ∧
-  (bn = .self → vars_locs V q ⊆ ls)
-
-def env_type1 M H (G: tenv) V p :=
-  ‖H‖ = ‖G‖ ∧
-  ‖V‖ = ‖G‖ ∧
-  closed_ql false 0 ‖H‖ p ∧
-  (∀ ⦃x T q bn⦄,
-      G[x]? = some (T, q, bn) →
-      ∃ v vt ls,
-        H[x]? = some v ∧
-        V[x]? = some (vt, ls) ∧
-        env_cell M V p x T q bn v vt ls)
-
-def env_type M H G V p :=
-  env_type1 M H G V p ∧
-  env_qual G V p
-
-def env_type1.v2t (et: env_type1 M H G V p) := et.1
-def env_type1.t2l (et: env_type1 M H G V p) := Eq.symm et.2.1
-def env_type1.v2l (et: env_type1 M H G V p) := Eq.trans et.v2t et.t2l
-
-def env_type1.pclosed (et: env_type1 M H G V p) := by
-  have et' := et; obtain ⟨-, -, et', -⟩ := et'; rwa [et.v2l] at et'
-
-def env_type1.pclosed' (et: env_type1 M H G V p) (h: q ⊆ p): closed_ql false 0 ‖V‖ q := by
-  simp [closed_ql]; trans; assumption; exact et.pclosed
-
-def env_type1.byG {x: ℕ} (et: env_type1 M H G V p) (h: G[x]? = some (T, q, bn)) := by
-  obtain ⟨-, -, -, et⟩ := et; exact et h
-
-def env_type1.byV {x: ℕ} (et: env_type1 M H G V p) (vx: V[x]? = some (vt, ls))
-  : ∃ T q bn v, G[x]? = some (T, q, bn) ∧ H[x]? = some v ∧
-  env_cell M V p x T q bn v vt ls :=
-by
-  have gx := (List.getElem?_eq_some.1 vx).1; rw [←et.t2l] at gx
-  replace gx := List.getElem?_eq_getElem gx; generalize G[x] = e at gx
-  obtain ⟨T, q, bn⟩ := e; have := et.byG gx; obtain ⟨v, _, ls', _, vx', _⟩ := this
-  rw [vx] at vx'; injections; subst_vars; exists T, q, bn, v
-
-section env_type_conv
-variable (et: env_type M H G V p)
-def env_type.v2t := et.1.v2t
-def env_type.t2l := et.1.t2l
-def env_type.v2l := et.1.v2l
-def env_type.pclosed := et.1.pclosed
-def env_type.pclosed' {q} := et.1.pclosed' (q := q)
-def env_type.byG {x T q bn} := et.1.byG (x := x) (T := T) (q := q) (bn := bn)
-def env_type.byV {x vt ls} := et.1.byV (x := x) (vt := vt) (ls := ls)
-def env_type.sep := by replace et := et.2; simp at et; exact et
-end env_type_conv
-
-lemma env_type1_store_wf:
-  env_type1 M H G V p →
-  vars_locs V p ⊆ st_locs M :=
-by
-  introv WFE; simp [vars_locs, var_locs, sets]
-  intros _ x H3 H2; split at H2; swap; cases H2; rename_i H0
-  have := WFE.byV H0; dsimp at this
-  obtain ⟨_, _, _, _, -, -, -, -, -, this, -⟩ := this
-  obtain ⟨this, -⟩ := valt_wf (this H3)
-  apply this at H2; simpa using H2
-
-lemma env_type_store_wf (h: env_type M H G V p):
-  vars_locs V p ⊆ st_locs M := env_type1_store_wf h.1
-
-lemma env_type1_store_wf':
-  env_type1 M H G V p →
-  q ⊆ p →
-  vars_locs V q ⊆ st_locs M :=
-by
-  intros WFE P; trans; swap; apply env_type1_store_wf WFE
-  apply vars_locs_monotonic; assumption
-
-lemma env_type_store_wf' (h: env_type M H G V p):
-  q ⊆ p → vars_locs V q ⊆ st_locs M := env_type1_store_wf' h.1
-
-lemma envt1_store_change:
-  env_type1 M H G V p →
-  st_chain_deep M M' (vars_locs V p) →
-  env_type1 M' H G V p :=
-by
-  intros H1 H2; dsimp [env_type1] at H1 ⊢; split_ands''
-  rename_i H1; introv H; obtain ⟨v, vt, ls, _, _, _, _, _, H1', _, _⟩ := H1 H; clear H1
-  exists v, vt, ls; split_ands'; intros; apply valt_store_change; tauto
-  apply stchain_tighten; assumption; apply lls_mono; intros _ _
-  simp only [vars_locs, var_locs, Set.mem_setOf]; exists x; simp_all
-
-lemma envt_store_change:
-  env_type M H G V p →
-  st_chain_deep M M' (vars_locs V p) →
-  env_type M' H G V p :=
-by
-  intros H1 H2; dsimp [env_type] at H1 ⊢; split_ands''; apply_rules [envt1_store_change]
-
-lemma envt1_tighten:
-  env_type1 M H G V p →
-  p' ⊆ p →
-  env_type1 M H G V p' :=
-by
-  intros WFE PQ; dsimp [env_type1] at *
-  obtain ⟨_, _, HP, GX⟩ := WFE; split_ands'
-  · simp [closed_ql]; trans; exact PQ; assumption
-  · intros _ _ _ _ gx; obtain ⟨v, vt, ls, GX⟩ := GX gx
-    exists v, vt, ls; split_ands''; tauto
-
-lemma envt_tighten:
-  env_type M H G V p →
-  p' ⊆ p →
-  env_type M H G V p' :=
-by
-  intros WFE PQ; dsimp [env_type] at *
-  obtain ⟨WFE1, QV⟩ := WFE; split_ands; apply_rules [envt1_tighten]
-  intros; have: p' ∪ {✦} ⊆ p ∪ {✦} := by gcongr
-  apply QV; tauto; tauto; tauto
-
-lemma envt1_telescope:
-  env_type1 M H G V p →
-  telescope G :=
-by
-  intros H; dsimp [telescope]
-  intros _ _ _ _ Gx; have := H.byG Gx; dsimp at this; tauto
-
-lemma envt_telescope (h: env_type M H G V p):
-  telescope G := envt1_telescope h.1
 
 -- semantic typing
 
@@ -1044,8 +66,8 @@ by
   obtain ⟨Ha1, Ha2, Ha3, Ha4⟩ := Ha WFE; obtain ⟨Hb1, Hb2, Hb3, Hb4⟩ := Hb WFE
   split_ands'
   · clear * - Ha1 Hb1; tauto
-  · trans (?_ ∪ ?_); gcongr; assumption'; simp
-  · trans (?_ ∪ ?_); gcongr; assumption'; simp
+  · apply Finset.union_subset; assumption'
+  · apply Finset.union_subset; assumption'
   · gcongr
 
 theorem sem_qtp_var:
@@ -1054,7 +76,7 @@ theorem sem_qtp_var:
   sem_qtp G {%x} qx :=
 by
   intros H Qx _ _ _ _ WFE; obtain ⟨v, vt, ls, -, H1, _, _, -, -, _, _⟩ := WFE.byG H
-  have := (List.getElem?_eq_some.1 H).1; simp [Qx, closed_ql] at *; split_ands'
+  have := List.getElem?_eq_some' H; simp [Qx, closed_ql] at *; split_ands'
   · trans; assumption; simp; omega
   · conv => left; simp [vars_locs, var_locs, H1]
     assumption
@@ -1064,7 +86,7 @@ theorem sem_qtp_self:
   sem_qtp G (qx \ {✦}) {%x} :=
 by
   intros H _ _ _ _ WFE; obtain ⟨v, vt, ls, -, H1, _, _, -, -, _, _⟩ := WFE.byG H
-  have := (List.getElem?_eq_some.1 H).1; simp [closed_ql] at *; split_ands'
+  have := List.getElem?_eq_some' H; simp [closed_ql] at *; split_ands'
   · trans qx; simp; trans; assumption; simp; omega
   · conv => right; simp [vars_locs, var_locs, H1]
     assumption
@@ -1090,11 +112,11 @@ by
   exists n+1; intros n' hn; cases n' <;> simp at hn
   simp! [bind]; simp [h, hn, Except.bind, pure, Except.pure]; omega
 
-theorem sem_true:
-  sem_type G .ttrue .TBool p ∅ :=
+theorem sem_unit:
+  sem_type G .tunit .TUnit p ∅ :=
 by
   dsimp; introv _ ST
-  exists S, M, .vbool true, ∅; split_ands'
+  exists S, M, .vnat 0, ∅; split_ands'
   · exists 1; intros n _; cases n; contradiction
     simp!; trivial
   · simp [st_chain, sets]
@@ -1102,17 +124,61 @@ by
   · simp [val_type]
   · simp
 
-theorem sem_false:
-  sem_type G .tfalse .TBool p ∅ :=
+theorem sem_nat:
+  sem_type G (.tnat n) .TNat p ∅ :=
 by
   dsimp; introv _ ST
-  exists S, M, .vbool false, ∅; split_ands'
+  exists S, M, .vnat n, ∅; split_ands'
   · exists 1; intros n _; cases n; contradiction
     simp!; trivial
   · simp [st_chain, sets]
   · simp [store_effect]
   · simp [val_type]
   · simp
+
+theorem sem_add:
+  sem_type G t1 .TNat p q1 →
+  sem_type G t2 .TNat p q2 →
+  sem_type G (.tadd t1 t2) .TNat p ∅ :=
+by
+  intro H1 H2; simp; introv WFE ST
+  obtain ⟨S1, M1, v1, ls1, EV1, SC1, ST1, SE1, VT1, VQ1, -⟩ := H1 WFE ST
+  cases v1 <;> simp only [val_type] at VT1; rename_i n1
+  apply envt_store_change at WFE; specialize WFE _
+  apply stchain_tighten; assumption; apply lls_closed'; assumption
+  apply env_type_store_wf; assumption
+  obtain ⟨S2, M2, v2, ls2, EV2, SC2, ST2, SE2, VT2, VQ2, -⟩ := H2 WFE ST1
+  cases v2 <;> simp only [val_type] at VT2; rename_i n2
+  exists S2, M2, .vnat (n1 + n2); split_ands'
+  · obtain ⟨d1, EV1⟩ := EV1; obtain ⟨d2, EV2⟩ := EV2
+    exists 1+d1+d2; intros n _; cases n; contradiction; simp! [bind]
+    rw [EV1]; simp!; rw [EV2]; simp! [pure, Except.pure]; omega; omega
+  · apply stchain_tighten; apply stchain_chain; assumption'
+    clear *- SC1; simp [sets, st_chain] at *; omega
+  · apply se_trans; assumption'
+  · simp [val_type]
+
+theorem sem_mul:
+  sem_type G t1 .TNat p q1 →
+  sem_type G t2 .TNat p q2 →
+  sem_type G (.tmul t1 t2) .TNat p ∅ :=
+by
+  intro H1 H2; simp; introv WFE ST
+  obtain ⟨S1, M1, v1, ls1, EV1, SC1, ST1, SE1, VT1, VQ1, -⟩ := H1 WFE ST
+  cases v1 <;> simp only [val_type] at VT1; rename_i n1
+  apply envt_store_change at WFE; specialize WFE _
+  apply stchain_tighten; assumption; apply lls_closed'; assumption
+  apply env_type_store_wf; assumption
+  obtain ⟨S2, M2, v2, ls2, EV2, SC2, ST2, SE2, VT2, VQ2, -⟩ := H2 WFE ST1
+  cases v2 <;> simp only [val_type] at VT2; rename_i n2
+  exists S2, M2, .vnat (n1 * n2); split_ands'
+  · obtain ⟨d1, EV1⟩ := EV1; obtain ⟨d2, EV2⟩ := EV2
+    exists 1+d1+d2; intros n _; cases n; contradiction; simp! [bind]
+    rw [EV1]; simp!; rw [EV2]; simp! [pure, Except.pure]; omega; omega
+  · apply stchain_tighten; apply stchain_chain; assumption'
+    clear *- SC1; simp [sets, st_chain] at *; omega
+  · apply se_trans; assumption'
+  · simp [val_type]
 
 theorem sem_var:
   G[x]? = some (T, q, bn) →
@@ -1127,13 +193,13 @@ by
   · simp [st_chain, sets]
   · simp [store_effect]
   · tauto
-  · simp [vars_locs, var_locs]; intros _ _; exists x; simp [H0]; tauto
+  · simp [vars_locs, var_locs]; intros _ _; simp [H0]; tauto
   · intros _; simp [vars_locs, var_locs, H0]
 
-theorem sem_ref:
+theorem sem_ref2:
   sem_type G t T p q →
   q ⊆ p →  -- ✦ ∉ q
-  sem_type G (.tref t) (.TRef T q) p {✦} :=
+  sem_type G (.tref t) (.TRef2 T q T q) p {✦} :=
 by
   introv H P; dsimp at *; introv WFE ST
   obtain ⟨S', M', vx, ls, HEV, MM, ST', SE, VT, VQ, _⟩ := H WFE ST; clear H
@@ -1146,75 +212,89 @@ by
   · simp only [tevaln] at *; obtain ⟨n, HEV⟩ := HEV; exists n + 1
     intros n' _; cases n'; omega; simp! [bind]; rw [HEV]; simp!
     congr 2; omega; omega
-  · simp [st_chain]; split_ands'; omega
-    intros; rw [MMs.2, List.getElem?_append_left]; omega; trivial
+  · simp [st_chain]; split_ands'; omega; intros l h; have: l < ‖M'‖ := by omega
+    simp [h, this, MMs.2]
   · apply storet_extend (ls := ls); assumption
     trans; simpa using VQ; split <;> rename_i NF
     specialize Cq NF; simp at Cq; simp; apply vars_locs_monotonic; simp [sets]
     simp [vt]; trivial; simp [qt]; trans; apply env_type_store_wf' WFE; assumption
     simp; tauto
   · apply se_trans; assumption; simp [store_effect]; intros _ _ _ H
-    rwa [List.getElem?_append_left]; rw [List.getElem?_eq_some] at H; tauto
-  · simp [val_type]; split_ands'
-    · apply valt_wf at VT; tauto
-    · simp only [store_type] at ST'; c_extend;
-    · simp [store_type] at ST'; omega
-    · exists vt, qt; have ST'1 := ST'.1; simp [List.getElem?_append_right, ST'1]
-      split_ands'
-      · simp [subst, Cq.hfvs]
-      · intros _ lsv _; conv => left; simp [vt]
-        have: lsv ⊆ st_locs M' := by
-          trans; assumption; trans; apply env_type_store_wf' WFE P; simp; tauto
-        have: locs_locs_stty M' lsv ⊆ st_locs M' := by
-          apply lls_closed'; assumption; assumption
-        have: st_chain_deep M' (M' ++ [(vt, qt)]) lsv := by
-          simp [st_chain]; split_ands'; trans; assumption; simp
-          intros _ H; rw [List.getElem?_append_left]; simp at this; tauto
-        constructor <;> intro H0
-        · apply valt_store_change; assumption'
-        · have: st_chain_deep (M' ++ [(vt, qt)]) M' lsv := by
-            apply stchain_symm; apply stchain_tighten; assumption; rwa [←lls_change]
-          apply valt_store_change; assumption'
+    simpa [List.getElem?_eq_some' H]
+  · have Ct := (valt_wf VT).2; simp [val_type]; split_ands'
+    c_extend; c_extend; c_free; c_free; simp [store_type] at ST'; omega
+    exists vt, qt; have ST'1 := ST'.1; simp [←ST'1]
+    have h0: st_chain_deep M' (M' ++ [(vt, qt)]) qt := by
+      have: qt ⊆ st_locs M' := by
+        trans; apply env_type_store_wf' WFE P; simp [MMs]
+      have: locs_locs_stty M' qt ⊆ st_locs M' := by
+        apply lls_closed'; assumption'
+      simp [st_chain]; split_ands'; trans; assumption; simp
+      intros _ H; specialize this H; simp at this; simp [this]
+    rintro S'' M'' MM' -; simp [vt]
+    replace h0: ∀ lsv ⊆ qt, st_chain_deep M' M'' lsv := by
+      introv _; apply stchain_tighten; apply stchain_chain; assumption'
+      apply Set.subset_inter; apply lls_mono; assumption
+      simp [sets]; intros; apply lls_s; simp; rfl; simp; exact ⟨rfl, rfl⟩
+      rw [←lls_change h0]; apply lls_mono; assumption'
+    clear MM'; have: occurs .none T #0 := by c_free;
+    simp [ty.open_free this, Ct, valt_extend]; split_ands
+    · introv h1 h2; exists lsv; split_ands'; apply valt_store_change
+      assumption; specialize h0 _ h1; apply stchain_symm; rwa [←lls_change h0]
+    · introv h1 h2; exists lsv; split_ands
+      simpa [subst, (by c_free: #0 ∉ q), Cq.hfvs]; apply valt_store_change
+      assumption; apply h0; assumption
   · simp [store_type] at ST ST' ⊢; right; omega
 
-theorem sem_get:
-  sem_type env t (.TRef T q1) p q →
-  q1 \ {#0} ⊆ p →
-  sem_type env (.tget t) T p [#0 ↦ q] q1 :=
+theorem sem_get2:
+  sem_type env t (.TRef2 T1 q1 T2 q2) p q →
+  q2 ⊆ p ∪ {#0} →
+  (✦ ∈ q → occurs .noneq T2 #0) →
+  sem_type env (.tget t) ([#0 ↦ p ∩ q] T2) p ([#0 ↦ q] q2) :=
 by
-  intros H1 H2; dsimp at *; introv WFE ST
-  obtain ⟨S', M', v, ls, EV, MM, ST', SE, VT, VQ, -⟩ := H1 WFE ST
+  intros H1 H2 H3; dsimp at *; introv WFE ST
+  obtain ⟨S', M', v, lsf, EV, MM, ST', SE, VT, VQ, -⟩ := H1 WFE ST
   clear H1; cases v <;> simp only [val_type] at VT
-  obtain ⟨_, _, Cq1, _, vt, qt, ML, QQ, _, VT⟩ := VT
-  obtain ⟨v, ls, SL, VV, LQ, -⟩ := ST'.byM ML
-  exists S', M', v, ls; split_ands'
+  obtain ⟨-, Ct2, -, Cq2, -, _, _, _, vt, qt, ML, VT⟩ := VT
+  specialize VT _ ST'; simp [st_chain]; apply lls_closed' ST'; assumption
+  obtain ⟨v, ls, SL, VV, LQ, -⟩ := ST'.byM ML; apply VT.2 at VV; assumption'
+  clear VT; obtain ⟨ls', _, VV⟩ := VV
+  exists S', M', v, ls'; split_ands'
   · dsimp only [tevaln] at *; obtain ⟨nm, EV⟩ := EV; exists nm + 1; intros n _
     cases n; omega; simp! only [bind]; rw [EV]; simp! only [SL]
     congr 2; omega; omega
-  · rw [←VT] <;> trivial
-  · trans; exact LQ; trans; exact QQ
-    simp [Finset.inter_subst]; simp [subst, Cq1.hfvs]
+  · let lsf' := if ✦ ∈ q then lsf else vars_locs V (p ∩ q)
+    have Cpq: closed_ql false 0 ‖V‖ (p ∩ q) := WFE.pclosed' (by simp)
+    rw [←valt_extend (V':=[(vtnone, lsf')]), ←ty.subst_open_chain _ %‖V‖, valt_subst']
+    rotate_left; simp; exact ⟨rfl, rfl⟩; simp!; c_extend; assumption
+    simp [val_type]; rfl; simp [Cpq.hfvs, lsf']
+    by_cases NF: ✦ ∈ q <;> simp [NF, H3]; left; c_free; c_free;
+    c_subst; assumption'; simp [lsf']; split; assumption; rename_i h
+    simp [h] at H3 VQ; apply valt_change_no_contra (x:=‖V‖) (l':=lsf') at VV
+    rotate_right 2; simp; exact ⟨rfl, rfl⟩; simpa [lsf', h]
+    simpa [lsf', h] using VV; simp; split_ands'; c_free;
+  · trans; assumption; simp [Finset.inter_subst]; simp [subst, Cq2.hfvs]
     rw [Set.union_assoc]; gcongr
-    · trans vars_locs V (q1 \ {#0}); simp [sets]; apply vars_locs_monotonic
-      apply Finset.subset_inter; assumption; simp
-    · by_cases h: #0 ∈ q1 <;> simp [h]
+    · trans vars_locs V (q2 \ {#0}); simp [sets]; apply vars_locs_monotonic
+      clear *- H2; intro x; specialize @H2 x; simp [sets] at *; tauto
+    · by_cases h: #0 ∈ q2 <;> simp [h]
       trans; exact VQ; gcongr; by_cases h: ✦ ∈ q <;> simp [h]
 
-theorem sem_put:
-  sem_type env t1 (.TRef T q1) p q2 →
-  sem_type env t2 T p (q1 \ {#0}) →
-  sem_type env (.tput t1 t2) .TBool p ∅ :=
+theorem sem_put2:
+  sem_type env t1 (.TRef2 T1 q1 T2 q2) p q →
+  sem_type env t2 T1 p q1 →
+  sem_type env (.tput t1 t2) .TUnit p ∅ :=
 by
   intros H1 H2; dsimp at *; introv WFE ST
   obtain ⟨S', M', v1, ls1, EV1, MM', ST', SS', VT1, VQ1, -⟩ := H1 WFE ST
-  have NF: ✦ ∉ q1 := by
-    apply valt_wf at VT1; simp! at VT1; obtain ⟨-, -, Cq1⟩ := VT1; c_free;
-  clear H1; have WFE' : env_type M' E env V p := by
+  clear H1; have VT1' := VT1; cases v1 <;> simp only [val_type] at VT1'
+  rename_i l; obtain ⟨-, -, Cq1, -⟩ := VT1'
+  have WFE' : env_type M' E env V p := by
     apply envt_store_change; assumption; apply stchain_tighten; assumption
     apply lls_closed'; assumption; apply env_type_store_wf WFE
   obtain ⟨S'', M'', v2, ls2, EV2, MM'', ST'', SS'', VT2, VQ2, -⟩ := H2 WFE' ST'
-  clear H2; simp [NF] at VQ2; cases v1 <;> try solve | simp only [val_type] at VT1
-  rename_i l; exists S''.set l v2, M'', .vbool true, ∅; split_ands'
+  clear H2; simp [(by c_free: ✦ ∉ q1)] at VQ2; have Ct1 := (valt_wf VT2).2
+  exists S''.set l v2, M'', .vnat 0, ∅; split_ands'
   · dsimp [tevaln] at *; obtain ⟨nm1, EV1⟩ := EV1; obtain ⟨nm2, EV2⟩ := EV2
     exists 1 + nm1 + nm2; intros n _; rcases n with - | n; omega
     specialize EV1 n (by omega); specialize EV2 n (by omega)
@@ -1223,31 +303,198 @@ by
       apply lt_of_lt_of_le (b:=‖M'‖); simp only [val_type] at VT1
       simp only [sets] at VT1; tauto
       simp [st_chain, store_type] at MM'' ST''; omega
-    exists S''[l]; simp [this]
+    exists S''[l]; simp
   · apply stchain_tighten; apply stchain_chain; assumption'
     simp [st_chain] at MM'; simp [sets]; omega
   · simp [store_type]; split_ands; apply ST''.1; intro l0 L
     if h: l0 = l then
       subst l0; have VT1' := valt_store_change (M' := M'') VT1 ?_
-      simp only [val_type] at VT1'; obtain ⟨-, -, -, -, vt, qt, ML, -, VQ1, VT1⟩ := VT1'
-      exists vt, qt; split_ands'
-      exists v2; split_ands; rw [List.getElem?_set_self]; simpa [←ST''.1]
-      exists ls2; have: ls2 ⊆ qt := by
-        trans; assumption; simp [←Finset.inter_sdiff_assoc]; trans; swap; assumption
-        apply vars_locs_monotonic; simp [sets]
-      split_ands'; rwa [VT1]; assumption; have := ST''.byM ML; tauto
+      simp only [val_type] at VT1'
+      obtain ⟨-, -, -, -, -, -, -, -, vt, qt, ML, VT1'⟩ := VT1'
+      specialize VT1' _ ST''
+      · simp [st_chain]; apply lls_closed'; assumption
+        trans; apply (valt_wf VT1).1; apply MM''.2.1
+      obtain ⟨VT1', -⟩ := VT1'; have: occurs .none T1 #0 := by c_free;
+      simp [ty.open_free this, valt_extend Ct1] at VT1'
+      specialize VT1' _ _ _ VT2
+      · trans; assumption; apply vars_locs_monotonic; simp
+      exists vt, qt; split_ands'; exists v2; split_ands; simp [L, ←ST''.1]
+      obtain ⟨ls2', _, _⟩ := VT1'; exists ls2'; split_ands'
+      have := ST''.byM ML; tauto
       apply stchain_tighten; assumption; apply lls_closed'; assumption
       simp [sets]; intro _ H; simp only [val_type] at VT1; tauto
     else
-      simp [store_type] at ST''; rw [List.getElem?_set_ne]; tauto; omega
+      simp [store_type] at ST''; simp [(Ne.intro h).symm]; tauto
   · apply se_trans_sub (p := {l}); apply se_trans; assumption'
-    simp [store_effect]; intros; rwa [List.getElem?_set_ne]; omega
+    simp [store_effect]; introv h; simp [(Ne.intro h).symm]
     have: l ∈ ls1 := by simp only [val_type] at VT1; tauto
     simp [sets, ←ST.1]; specialize VQ1 this; simp at VQ1
     rcases VQ1 with VQ1 | VQ1
     left; revert VQ1; apply vars_locs_monotonic; simp [sets]; tauto
   · simp [val_type]
   · simp
+
+theorem sem_pair:
+  sem_type G t1 T1 p q1 →
+  sem_type G t2 T2 p q2 →
+  q1 ∪ q2 ⊆ p ∪ {✦} →
+  sem_type G (.tpair t1 t2) (.TProd T1 ([✦ ↦ #0] q1) T2 ([✦ ↦ #0] q2)) p (q1 ∪ q2) :=
+by
+  intro h1 h2 h3; dsimp; introv WFE ST
+  obtain ⟨S1, M1, v1, ls1, EV1, SC1, ST1, SE1, VT1, VQ1, -⟩ := h1 WFE ST
+  apply envt_store_change at WFE; specialize WFE _
+  · apply stchain_tighten; assumption; apply lls_closed'; assumption
+    apply env_type_store_wf; assumption
+  obtain ⟨S2, M2, v2, ls2, EV2, SC2, ST2, SE2, VT2, VQ2, -⟩ := h2 WFE ST1
+  exists S2, M2, .vpair v1 v2, ls1 ∪ ls2; split_ands'
+  · obtain ⟨d1, EV1⟩ := EV1; obtain ⟨d2, EV2⟩ := EV2
+    exists 1+d1+d2; intro n _; cases n; omega; rename_i n _
+    specialize EV1 n (by omega); specialize EV2 n (by omega)
+    simp! [bind, EV1, EV2, pure, Except.pure]
+  · apply stchain_tighten; apply stchain_chain; assumption'
+    clear *- SC1; simp [st_chain, sets] at *; omega
+  · apply se_trans; assumption'
+  · simp only [val_type]; have WT1 := valt_wf VT1; have WT2 := valt_wf VT2
+    have Cq12: q1 ∪ q2 ⊆ qdom true 0 ‖V‖ := by
+      trans; assumption; apply Finset.union_subset
+      c_extend WFE.pclosed; simp [sets]
+    rw [Finset.union_subset_iff] at Cq12
+    split_ands; c_extend WT1.2; c_extend WT2.2;
+    · apply closedql_fr_tighten; simp [subst]
+      rw [closedql_subst]; rotate_left; simp [sets]; simp; c_extend Cq12.1
+    · apply closedql_fr_tighten; simp [subst]
+      rw [closedql_subst]; rotate_left; simp [sets]; simp; c_extend Cq12.2
+    c_free WT1.2; c_free WT2.2;
+    · intro x; have WT1 := @WT1.1 x; have WT2 := @WT2.1 x
+      clear *- WT1 WT2 SC2; simp [st_chain] at *; aesop (add safe (by omega))
+    introv SC3 ST3; exists ls1, ls2; split_ands
+    · simp [subst]; split; clear *-; simp [sets]; tauto; rename_i h; simp at h
+      simp [closed_ql.hfvs Cq12.1]; simp [h] at VQ1
+      trans; assumption; apply vars_locs_monotonic; simp
+    · rw [ty.open_free]; swap; c_free WT1.2
+      rw [valt_extend WT1.2]; apply valt_store_change; assumption
+      apply stchain_tighten; apply stchain_chain; assumption'
+      have := lls_closed' ST1 WT1.1; apply Set.subset_inter; assumption
+      rw [lls_change]; apply lls_mono; simp; apply stchain_tighten; assumption'
+    · simp [subst]; split; clear *-; simp [sets]; tauto; rename_i h; simp at h
+      simp [closed_ql.hfvs Cq12.2]; simp [h] at VQ2
+      trans; assumption; apply vars_locs_monotonic; simp
+    · rw [ty.open_free]; swap; c_free WT2.2
+      rw [valt_extend WT2.2]; apply valt_store_change; assumption
+      apply stchain_tighten; assumption; apply lls_mono; simp
+  · clear *- VQ1 VQ2 SC1; intro l; specialize @VQ1 l; specialize @VQ2 l
+    simp [Finset.inter_union_distrib_left, st_chain, sets] at *
+    aesop (add safe (by omega))
+
+theorem sem_fst:
+  sem_type env t (.TProd T1 q1 T2 q2) p q →
+  q1 ⊆ p ∪ {#0} →
+  (✦ ∈ q → occurs .noneq T1 #0) →
+  sem_type env (.tfst t) ([#0 ↦ p ∩ q] T1) p ([#0 ↦ q] q1) :=
+by
+  intro h1 h2 h3; dsimp; introv WFE ST
+  obtain ⟨S', M', v, ls, EV, MM, ST, SE, VT, VQ, EQ⟩ := h1 WFE ST
+  cases v <;> simp only [val_type] at VT; rename_i v1 _
+  obtain ⟨Ct1, _, Cq1, _, _, _, _, VT⟩ := VT; specialize VT _ ST
+  · simp [st_chain]; apply lls_closed'; assumption'
+  obtain ⟨ls1, -, VQ1, VT1, -⟩ := VT; exists S', M', v1, ls1; split_ands'
+  · obtain ⟨d, EV⟩ := EV; exists 1+d; intro n _; cases n; omega; rename_i n _
+    specialize EV n (by omega); simp! [bind, EV, pure, Except.pure]
+  · let ls' := if ✦ ∈ q then ls else vars_locs V (p ∩ q)
+    rw [←valt_extend (V':=[(vtnone,ls')]), ←ty.subst_open_chain _ %‖V‖, valt_subst']
+    · apply valt_change_no_contra ‖V‖ (l':=ls') at VT1; rotate_left 2
+      simp; split_ands'; c_free; simp; exact ⟨rfl, rfl⟩
+      simp [ls']; clear *- VQ; aesop; simpa using VT1
+    simp; exact ⟨rfl, rfl⟩; simp!; c_extend (WFE.pclosed' (by simp)); assumption
+    simp [val_type]; rfl; simp; rotate_left; c_free Ct1
+    · c_subst; assumption; apply WFE.pclosed'; simp
+    · by_cases h: ✦ ∈ q <;> simp [h]; left; simp [h3 h]; c_free;
+      right; simp [ls', h]; rw [vars_locs_shrink]; apply closed_ql.hfvs
+      apply WFE.pclosed'; simp
+  · simp [Finset.inter_subst]; simp [subst, Cq1.hfvs] at VQ1 ⊢
+    simp at VQ; have: q1 ⊆ p ∩ q1 ∪ {#0}:= by clear *- h2; aesop (add simp sets)
+    apply vars_locs_monotonic (V:=V) at this; simp at this
+    clear *- this VQ1 VQ; intro l; specialize @VQ l; specialize @VQ1 l
+    specialize @this l; aesop (add simp sets)
+
+theorem sem_snd:
+  sem_type env t (.TProd T1 q1 T2 q2) p q →
+  q2 ⊆ p ∪ {#0} →
+  (✦ ∈ q → occurs .noneq T2 #0) →
+  sem_type env (.tsnd t) ([#0 ↦ p ∩ q] T2) p ([#0 ↦ q] q2) :=
+by
+  intro h1 h2 h3; dsimp; introv WFE ST
+  obtain ⟨S', M', v, ls, EV, MM, ST, SE, VT, VQ, EQ⟩ := h1 WFE ST
+  cases v <;> simp only [val_type] at VT; rename_i _ v2
+  obtain ⟨_, Ct2, _, Cq2, _, _, _, VT⟩ := VT; specialize VT _ ST
+  · simp [st_chain]; apply lls_closed'; assumption'
+  obtain ⟨-, ls2, -, -, VQ2, VT2⟩ := VT; exists S', M', v2, ls2; split_ands'
+  · obtain ⟨d, EV⟩ := EV; exists 1+d; intro n _; cases n; omega; rename_i n _
+    specialize EV n (by omega); simp! [bind, EV, pure, Except.pure]
+  · let ls' := if ✦ ∈ q then ls else vars_locs V (p ∩ q)
+    rw [←valt_extend (V':=[(vtnone,ls')]), ←ty.subst_open_chain _ %‖V‖, valt_subst']
+    · apply valt_change_no_contra ‖V‖ (l':=ls') at VT2; rotate_left 2
+      simp; split_ands'; c_free; simp; exact ⟨rfl, rfl⟩
+      simp [ls']; clear *- VQ; aesop; simpa using VT2
+    simp; exact ⟨rfl, rfl⟩; simp!; c_extend (WFE.pclosed' (by simp)); assumption
+    simp [val_type]; rfl; simp; rotate_left; c_free Ct2
+    · c_subst; assumption; apply WFE.pclosed'; simp
+    · by_cases h: ✦ ∈ q <;> simp [h]; left; simp [h3 h]; c_free;
+      right; simp [ls', h]; rw [vars_locs_shrink]; apply closed_ql.hfvs
+      apply WFE.pclosed'; simp
+  · simp [Finset.inter_subst]; simp [subst, Cq2.hfvs] at VQ2 ⊢
+    simp at VQ; have: q2 ⊆ p ∩ q2 ∪ {#0}:= by clear *- h2; aesop (add simp sets)
+    apply vars_locs_monotonic (V:=V) at this; simp at this
+    clear *- this VQ2 VQ; intro l; specialize @VQ l; specialize @VQ2 l
+    specialize @this l; aesop (add simp sets)
+
+theorem sem_nil:
+  closed_ty 0 ‖G‖ (.TList T) →
+  sem_type G .tnil (.TList T) p q :=
+by
+  dsimp; introv C WFE ST; exists S, M, .vlist [], ∅; split_ands'
+  · exists 1; intro n h; cases n; simp at h; simp! [pure, Except.pure]
+  · simp [st_chain]
+  · simp [store_effect]
+  · simp [val_type, ←WFE.t2l]; assumption
+  · simp
+
+theorem sem_cons:
+  sem_type G t0 T p q0 →
+  sem_type G t1 (.TList T) p q1 →
+  sem_type G (.tcons t0 t1) (.TList T) p (q0 ∪ q1) :=
+by
+  intro h1 h2; dsimp; introv WFE ST
+  obtain ⟨S1, M1, v1, ls1, EV1, MM1, ST1, SE1, VT1, VQ1, -⟩ := h1 WFE ST
+  have WFE1 := envt_store_change WFE (M':=M1) ?_; swap
+  · apply stchain_tighten; assumption; apply lls_closed'; assumption
+    apply env_type_store_wf WFE
+  obtain ⟨S2, M2, v2, ls2, EV2, MM2, ST2, SE2, VT2, VQ2, -⟩ := h2 WFE1 ST1
+  cases v2 <;> simp only [val_type] at VT2; rename_i v2
+  have C1 := valt_wf VT1
+  exists S2, M2, .vlist (v1::v2), ls1 ∪ ls2; split_ands'
+  · obtain ⟨d1, EV1⟩ := EV1; obtain ⟨d2, EV2⟩ := EV2; exists 1+d1+d2
+    intro n h; cases n; simp at h; rename_i n
+    specialize EV1 n (by omega); specialize EV2 n (by omega)
+    simp! [bind, EV1, EV2, pure, Except.pure]
+  · apply stchain_tighten; apply stchain_chain; assumption'
+    clear *- MM1; simp [st_chain] at *; simp [sets]; omega
+  · apply se_trans; assumption'
+  · simp [val_type]; obtain ⟨_, _, _, VT2⟩ := VT2; split_ands'
+    · apply Set.union_subset; assumption'; trans; apply C1.1
+      clear *- MM2; simp [st_chain] at *; omega
+    · exists ls1; simp; rw [ty.open_free]; swap; c_free C1.2;
+      rw [valt_extend C1.2]; apply valt_store_change; assumption
+      apply stchain_tighten; assumption'; apply lls_closed' ST1 C1.1
+    · intro _ h; specialize VT2 _ h; obtain ⟨ls, _, VT2⟩ := VT2
+      exists ls; split_ands; trans; assumption; simp
+      apply valt_change_no_contra ‖V‖ vtnone (ls1 ∪ ls2) at VT2
+      simpa using VT2; simp; split_ands'; c_free; simp; rfl; simp
+  · rw [Finset.inter_union_distrib_left]
+    clear *- VQ1 VQ2 MM1; simp [st_chain] at *
+    apply Set.union_subset <;> (trans; assumption)
+    · simp [sets]; aesop
+    · simp [sets]; aesop (add safe (by omega))
 
 theorem envt1_extend_stub:
   env_type1 M H G V p →
@@ -1261,24 +508,20 @@ by
   have WFE': env_type1 M1 H G V qf := by
     apply envt1_store_change; apply envt1_tighten; assumption'
   obtain ⟨HG, VG, PH, GX⟩ := WFE'; split_ands; simpa; simpa; simp
-  apply Finset.union_subset; trans; assumption; simp; simp; intros x _ q _ G0
+  apply Finset.union_subset; trans; assumption; simp; simp; intros x T q _ G0
   if h: x < ‖G‖ then
-    simp [List.getElem?_append, h, HG, VG]
-    simp only [reduceIte, List.getElem?_append, h] at G0
-    specialize GX G0; dsimp at GX
-    obtain ⟨v, vt, ls, HX, VX, _, XQ, VT, VP, _, _⟩ := GX
-    exists vt, ls; simp_all [HX, VX]; split_ands'
-    · introv h1 h2 h3; specialize VT h1 h2 h3
-      rwa [valt_extend]; c_extend; omega
-    · rintro (H1 | H1); specialize VP H1; rwa [valt_extend]
-      apply valt_wf at VP; tauto; exfalso; omega
-    · rwa [vars_locs_shrink]; intro; trans; apply XQ; simp; omega
-    · rwa [vars_locs_shrink]; intro; trans; apply XQ; simp; omega
+    have: x ≠ ‖G‖ := by omega
+    simp [h, HG, VG, this]; simp [h] at G0; specialize GX G0; dsimp at GX
+    obtain ⟨v, vt, ls, HX, VX, CT, CQ, GX⟩ := GX; simp [HX, VX, and_assoc]
+    have CQ': closed_ql true 0 ‖V‖ q := by c_extend; omega
+    have CT': closed_ty 0 ‖V‖ T := by c_extend; omega
+    simp [CQ'.hfvs, valt_extend, CT']; split_ands''
+    rwa [valt_extend]; split; simp!; assumption
   else
     have: x = ‖G‖ := by
-      rw [List.getElem?_eq_some] at G0; obtain ⟨G0, -⟩ := G0; simp at G0; omega
+      apply List.getElem?_eq_some' at G0; simp at G0; omega
     subst x; simp [HG, VG] at G0 Q1B ⊢; rcases G0 with ⟨rfl, rfl, rfl⟩
-    exists vt, lsx; split_ands'; rwa [←HG]
+    split_ands'; rwa [←HG]
     introv h1 h2 h3; specialize VT h1 h2 h3; rwa [valt_extend]; rwa [VG, ←HG]
     rwa [valt_extend]; split; simp!; rwa [←WFE.v2l]
     rwa [vars_locs_shrink]; intro; trans; apply Q1B; simp; omega
@@ -1294,7 +537,7 @@ theorem envt_extend_full:
   env_cell M1 V {%x} x T1 q1 bn vx vt lsx →
   env_type M1 (H ++ [vx]) (G ++ [(T1, q1, bn)]) (V ++ [(vt, lsx)]) (qf ∪ {%x}) :=
 by
-  intros WFE _ Q1F LB _ _ EC
+  intros WFE QfP Q1F LB _ _ EC
   dsimp [env_type] at *; obtain ⟨WFE, QV⟩ := WFE; split_ands
   · apply envt1_extend_stub; assumption'
   subst x; simp at EC; obtain ⟨_, _, _, _, _, _⟩ := EC
@@ -1306,10 +549,7 @@ by
   rw [this] at H0; clear this
   -- split qa qb
   have: ∀q x, q ⊆ qf ∪ {x} ∪ {✦} → q = q ∩ qf' ∪ ?[x ∈ q] {x} := by
-    clear * -; intros _ _ H; ext; simp [sets, qf'] at *
-    constructor <;> intro H1
-    · specialize H H1; rcases H with _ | rfl | rfl <;> tauto
-    · rcases H1 with _ | ⟨_, rfl⟩ <;> tauto
+    clear * -; intros _ _ H; ext x; specialize @H x; aesop
   apply this at HQa; apply this at HQb; clear this
   have QaF: qa ∩ qf' ⊆ qf' := by simp [sets]
   have QbF: qb ∩ qf' ⊆ qf' := by simp [sets]
@@ -1318,45 +558,139 @@ by
   have C: ∀ q ⊆ qf', closed_ql.fvs ‖V‖ q := by
     simp [closed_ql.fvs, qf', sets]; intro _ h _; trans; apply h; simp
     apply closed_ql.hfvs; apply WFE.pclosed' (by assumption)
-  generalize hOV: vars_trans (G ++ [(T1, q1, bn)]) qa ∩ vars_trans (G ++ [(T1, q1, bn)]) qb = ov at *
+  generalize hOV: vars_trans (G ++ [(T1, q1, bn)]) qa ∩
+                  vars_trans (G ++ [(T1, q1, bn)]) qb = ov at *
   rw [HQa, HQb, WFE.v2l] at hOV ⊢; simp [C, QaF, QbF]
   simp [TL, WFE.t2l, C, Q1F, QaF, QbF] at hOV
-  simp only [Set.union_inter_distrib_right, Set.inter_union_distrib_left, Set.union_assoc]
-  simp only [Finset.union_inter_distrib_right, Finset.inter_union_distrib_left, Finset.union_assoc] at hOV
+  simp only [Set.union_inter_distrib_right, Set.inter_union_distrib_left,
+             Set.union_assoc]
+  simp only [Finset.union_inter_distrib_right, Finset.inter_union_distrib_left,
+             Finset.union_assoc] at hOV
   subst ov; simp
   -- by congruence
   have CC: ∀ q ⊆ qf', closed_ql.fvs ‖G‖ (vars_trans G q) := by
     rw [←WFE.t2l] at C; clear * - C TL; intros; intro _ h
-    apply vt_closed at h; simp at h; tauto; exact telescope_shrink TL
+    apply vt_closed at h; aesop; exact telescope_shrink TL
   replace QV: ∀ q q', q ⊆ qf' → q' ⊆ qf' →
     vars_trans G q ∩ vars_trans G q' ⊆ qf' ∪ {%‖G‖} →
-    vars_locs V q ∩ vars_locs V q' ⊆ vars_locs (V ++ [(vt, lsx)]) (vars_trans G q ∩ vars_trans G q') :=
+    vars_locs V q ∩ vars_locs V q' ⊆
+      vars_locs (V ++ [(vt, lsx)]) (vars_trans G q ∩ vars_trans G q') :=
   by
-    intros _ _ _ c2 h; rw [vars_locs_shrink]; apply QV
-    trans; assumption; simp [qf']; gcongr
-    trans; assumption; simp [qf']; gcongr
+    intros _ _ _ c2 h; specialize CC _ c2; rw [vars_locs_shrink]; apply QV
+    trans; assumption; simp [qf']; gcongr; trans; assumption; simp [qf']; gcongr
     intros _ h1; specialize h h1; simp [qf'] at h h1 ⊢
-    rcases h with h | rfl | rfl
-    tauto; simp; exfalso; specialize CC _ c2 h1.2; simp at CC
-    rw [←WFE.t2l]; simp [closed_ql.fvs]; intros _ _ h; exact CC _ c2 h
+    clear *- CC h h1 QfP; specialize @CC ‖G‖; aesop (add simp sets)
+    rw [←WFE.t2l]; simp [closed_ql.fvs]; intros _ _ h; apply CC; assumption
   gcongr
   · apply QV; assumption'; trans; swap; assumption; simp [sets]
   · by_cases h: %‖V‖ ∈ qa <;> simp [h] at H0 ⊢
     trans; swap; trans; apply QV q1 qb'; assumption'
-    trans; swap; assumption; simp [sets]
-    intro _ h1 h2; right; left; exact ⟨.inr h1, h2⟩  -- tauto
+    trans; swap; assumption; clear *-; aesop (add simp sets)
     apply vars_locs_monotonic; simp [sets]; tauto
-    simp [sets]; intros _ _ h; split_ands'; apply LB; simp; split_ands'
-    revert h; trans; apply vars_locs_monotonic; assumption; simp [qf']
+    apply vars_locs_monotonic (V := V) at QbF; clear *- QbF LB; aesop (add simp sets)
   · by_cases h: %‖V‖ ∈ qb <;> simp [h] at H0 ⊢
     trans; swap; trans; apply QV qa' q1; assumption'
-    trans; swap; assumption; simp [sets]
-    intro _ h1 h2; right; right; left; exact ⟨h1, .inr h2⟩  -- tauto
+    trans; swap; assumption; clear *-; aesop (add simp sets)
     apply vars_locs_monotonic; simp [sets]; tauto
-    simp [sets]; intros _ h _; split_ands'; apply LB; simp; split_ands'
-    revert h; trans; apply vars_locs_monotonic; assumption; simp [qf']
+    apply vars_locs_monotonic (V := V) at QaF; clear *- QaF LB; aesop (add simp sets)
   · by_cases h: %‖V‖ ∈ qa <;> simp [h]
     by_cases h: %‖V‖ ∈ qb <;> simp [h]
+
+theorem sem_fold:
+  sem_type G tl (.TList T) p q1 →
+  sem_type G t0 U p q2 →
+  sem_type (G++[(T, p∩q1, .var), (U, p∩q2, .var)]) t1 U (p ∪ {%‖G‖, %(‖G‖+1)}) q2 →
+  closed_ty 0 ‖G‖ T → ✦ ∉ q1 → closed_ql false 0 ‖G‖ q2 →
+  sem_type G (.tfold tl t0 t1) U p q2 :=
+by
+  intro h1 h2 h3 Ct Nfr1 Cq2; dsimp; introv WFE ST
+  have Nfr2: ✦ ∉ q2 := by c_free;
+  obtain ⟨S1, M1, v1, ls1, EV1, MM1, ST1, SE1, VT1, VQ1, -⟩ := h1 WFE ST
+  cases v1 <;> simp only [val_type] at VT1; rename_i vlst
+  have WFE1 := envt_store_change WFE (M':=M1) ?_; swap
+  · apply stchain_tighten; assumption; apply lls_closed'; assumption
+    apply env_type_store_wf WFE
+  obtain ⟨S2, M2, v2, ls2, EV2, MM2, ST2, SE2, VT2, VQ2, -⟩ := h2 WFE1 ST1
+  obtain ⟨d1, EV1⟩ := EV1; obtain ⟨d2, EV2⟩ := EV2
+  suffices ∃ S' M' v ls,
+      (∃ nm > d1 + d2, ∀ n ≥ nm, vlst.foldr
+        (fun v1 ev0 => do
+          let (d0, S0, v0) ← ev0
+          let (d1, S1, v1) ← teval n S0 (E++[v1,v0]) t1
+          return (1+d0+d1, S1, v1))
+        (.ok (1+d1+d2, S2, v2)) = Except.ok (nm, S', v)) ∧
+      st_chain_full M2 M' ∧
+      store_type S' M' ∧
+      store_effect S2 S' (vars_locs V p) ∧
+      val_type M' V v U ls ∧
+      val_qual M1 M' V ls p q2 by
+    obtain ⟨S', M', v, ls, this, _, _, _, _, _⟩ := this
+    exists S', M', v, ls; split_ands'
+    · obtain ⟨nm, hnm, this⟩ := this
+      exists nm; intro n h; cases n; simp at h; rename_i n
+      specialize EV1 n (by omega); specialize EV2 n (by omega)
+      simp [bind] at this; specialize this n (by omega)
+      simp! [bind, EV1, EV2, this]
+    · apply stchain_tighten; apply stchain_chain; assumption
+      apply stchain_chain; assumption'; clear *- MM1 MM2
+      simp [st_chain, sets] at *; omega
+    · apply se_trans; assumption; apply se_trans; assumption'
+    · rename_i h; clear *- h MM1; simp [st_chain] at *
+      trans; assumption; gcongr; split <;> simp; omega
+  clear EV1 EV2 SE1 SE2 h1 h2; obtain ⟨-, -, _, VT1⟩ := VT1
+  induction vlst
+  · exists S2, M2, v2, ls2; split_ands'
+    · exists 1+d1+d2; simp
+    · simp [st_chain]
+    · simp [store_effect]
+  next vhd vtl ih =>
+    specialize ih (by intro _ h; apply VT1; simp [h])
+    specialize VT1 vhd (by simp); obtain ⟨ls1', _, VT1⟩ := VT1
+    rw [ty.open_free, valt_extend] at VT1; rotate_left; rwa [←WFE.t2l]; c_free;
+    apply valt_grow at VT1; specialize VT1 _ _; assumption'
+    have: env_cell M1 V {%‖V‖} ‖V‖ T (p∩q1) .var vhd vtnone ls1 := by
+      simp; split_ands; rwa [←WFE.t2l]; have := WFE.pclosed' (by simp: p∩q1 ⊆ p)
+      c_extend; assumption; simp [Nfr1] at VQ1; intro; assumption
+    replace WFE1 := envt_extend_full WFE1 (fun _ h => h)
+      (by clear *-; aesop (add simp sets)) (by clear *- Nfr1 VQ1; aesop (add simp sets))
+      (by simp [st_chain]; apply lls_closed' ST1; apply env_type_store_wf WFE1)
+      WFE.v2l.symm this
+    clear this; have := (valt_wf VT2).2
+    have Cq2': ∀p, closed_ql.fvs ‖V‖ (p ∩ q2) := by
+      intros _ _; simp; intro _; apply WFE.t2l ▸ Cq2.hfvs
+    obtain ⟨S3, M3, v3, ls3, EV3, MM3, ST3, SE3, VT3, VQ3⟩ := ih
+    have: env_cell M3 (V++[(vtnone, ls1)]) {%(‖V‖+1)} (‖V‖+1) U (p∩q2) .var v3 vtnone ls3 := by
+      simp; split_ands; c_extend; have := WFE.pclosed' (by simp: p∩q2 ⊆ p);
+      c_extend; rwa [valt_extend]; assumption; simp [Nfr2] at VQ3; intro
+      rwa [vars_locs_shrink]; apply Cq2'
+    have WFE2 := envt_extend_full WFE1 (fun _ h => h)
+      (by clear *-; aesop (add simp sets))
+      (by trans ls3; simp; rw [vars_locs_shrink]; swap; apply Cq2'
+          clear *- VQ3 Nfr2; aesop (add simp sets))
+      (by apply stchain_tighten; apply stchain_chain; assumption'
+          trans st_locs M1; apply lls_closed' ST1; apply env_type_store_wf WFE1
+          clear *- MM2; simp [sets, st_chain] at *; omega)
+      (by simp [WFE.v2l]) this
+    clear WFE1 this; simp [←WFE.t2l] at WFE2
+    obtain ⟨S', M', v4, ls4, EV4, MM4, ST4, SE4, VT4, VQ4, -⟩ := h3 WFE2 ST3
+    exists S', M', v4, ls4; split_ands'
+    · obtain ⟨d3, _, EV3⟩ := EV3; obtain ⟨d4, EV4⟩ := EV4
+      exists 1+d3+d4; split_ands; omega; intro n h; cases n; simp at h
+      rename_i n; specialize EV3 (n+1) (by omega); specialize EV4 (n+1) (by omega)
+      simp [-bind_pure_comp, EV3]; simp! [bind, EV4, pure, Except.pure]
+    · apply stchain_tighten; apply stchain_chain; assumption'
+      clear *- MM3; simp [sets, st_chain] at *; omega
+    · apply se_trans_sub; assumption'; simp [WFE.t2l, Finset.insert_eq]
+      rw [vars_locs_shrink]; swap; apply WFE.pclosed.hfvs
+      trans vars_locs V p; swap; simp; apply Set.union_subset; simp
+      clear *- Nfr1 Nfr2 VQ1 VQ3; simp [Nfr1, Nfr2] at VQ1 VQ3
+      apply Set.union_subset <;> (trans; assumption) <;> apply vars_locs_monotonic <;> simp
+    · rw [valt_extend] at VT4; assumption; assumption
+    · simp [Nfr2, Finset.insert_eq] at VQ4 ⊢
+      trans; exact VQ4; rw [vars_locs_shrink]; swap; apply Cq2'
+      apply vars_locs_monotonic; clear *- Cq2
+      replace Cq2 := Cq2.hfvs; intro x; cases x <;> simp
+      rename_i x; specialize @Cq2 x; aesop (add safe (by omega))
 
 theorem sem_abs:
   sem_type (env ++ [(.TTop, p ∩ qf, .self), ([#0 ↦ %‖env‖] T1, [#0 ↦ %‖env‖] q1, .var)])
@@ -1364,7 +698,7 @@ theorem sem_abs:
     (p ∩ qf ∪ {%‖env‖, %(‖env‖+1)})
     [#0 ↦ %‖env‖] [#1 ↦ %(‖env‖+1)] q2 →
 
-  q1 \ {✦, #0} ⊆ p ∩ qf →
+  q1 ⊆ p ∩ qf ∪ {✦, #0} →
   closed_ty 1 ‖env‖ T1 →
   closed_ty 2 ‖env‖ T2 →
   closed_ql true 1 ‖env‖ q1 →
@@ -1373,7 +707,7 @@ theorem sem_abs:
   (#0 ∈ q1 → ✦ ∈ q1) →
   occurs .no_covariant T1 #0 →
   occurs .no_contravariant T2 #0 →
-  sem_type env (.tabs t) (.TFun T1 q1 T2 q2) p qf :=
+  sem_type env (.tabs none t) (.TFun T1 q1 T2 q2) p qf :=
 by
   intros H FF Ct1 Ct2 Cq1 Cq2 Cqf _ _ _ S M E V WFE ST
   rw [Finset.insert_eq, ←Finset.union_assoc] at H
@@ -1389,7 +723,7 @@ by
     clear H; exists S2, M2, vy, lsy; obtain ⟨_, _, _, _, HVT2, HVQ2, _⟩ := IHW1
     split_ands'
     · -- store_effect
-      apply se_sub; assumption; simp [WFE.t2l, List.getElem_append_right]
+      apply se_sub; assumption; simp [WFE.t2l]
       rw [vars_locs_shrink]; simp [sets]; exact Cqf'.hfvs
     · -- val_qual
       simp at HVQ2; trans; assumption; simp [WFE.t2l, st_locs]; gcongr
@@ -1399,17 +733,15 @@ by
       rw [this, this, this]; clear this
       apply envt_extend_full (M := M) (p := p ∩ qf ∪ {%‖env‖}); rotate_left
       · clear * -; tauto
-      · simp [subst, sets] at FF ⊢; clear * - FF
-        rintro _ (⟨h, _⟩ | ⟨_, rfl⟩); specialize FF h; tauto; simp
-      · simp [Cqf'.hfvs, sets]; intros _ h1 h2; specialize HVQ1 h2
-        simp at HVQ1; obtain h | ⟨-, h⟩ := HVQ1; assumption
-        simp [WFE.t2l] at h1; contradiction
+      · clear * - FF; intro x; specialize @FF x; aesop (add simp [subst])
+      · simp [Cqf'.hfvs]; simp [WFE.t2l] at HVQ1 ⊢; clear *- HVQ1
+        intro x; specialize @HVQ1 x; aesop (add simp sets)
       · apply stchain_tighten; assumption; apply lls_mono
         simp [WFE.t2l, Cqf'.hfvs, sets]
       · simp [WFE.v2t]
       simp; split_ands'
-      · apply subst_tighten; c_extend; simp
-      · apply subst_tighten; c_extend; simp [sets]
+      · c_subst; c_extend;
+      · c_subst; c_extend;
       · intro h; simp [subst] at h; simpa [h] using HVQ1
       apply envt_extend_full WFE; simp; simp; simp
       simp [st_chain, MM.1]; simp [WFE.v2t]; simp; split_ands
@@ -1421,8 +753,8 @@ by
   · simp
 
 theorem sem_absa:
-  sem_type env (.tabs t) (.TFun T1 q1 T2 q2) p q →
-  sem_type env (.tabsa T1 q1 t) (.TFun T1 q1 T2 q2) p q :=
+  sem_type env (.tabs none t) (.TFun T1 q1 T2 q2) p q →
+  sem_type env (.tabs (T1, q1) t) (.TFun T1 q1 T2 q2) p q :=
 by
   intro h; dsimp at *; introv WFE ST; specialize h WFE ST
   obtain ⟨S', M', v, ls, h⟩ := h; exists S', M', v, ls; split_ands''
@@ -1435,7 +767,7 @@ theorem sem_tabs:
     (p ∩ qf ∪ {%‖env‖, %(‖env‖+1)})
     [#0 ↦ %‖env‖] [#1 ↦ %(‖env‖+1)] q2 →
 
-  q1 \ {✦, #0} ⊆ p ∩ qf →
+  q1 ⊆ p ∩ qf ∪ {✦, #0} →
   closed_ty 1 ‖env‖ T1 →
   closed_ty 2 ‖env‖ T2 →
   closed_ql true 1 ‖env‖ q1 →
@@ -1444,7 +776,7 @@ theorem sem_tabs:
   (#0 ∈ q1 → ✦ ∈ q1) →
   occurs .no_covariant T1 #0 →
   occurs .no_contravariant T2 #0 →
-  sem_type env (.ttabs T1 q1 t) (.TAll T1 q1 T2 q2) p qf :=
+  sem_type env (.ttabs none t) (.TAll T1 q1 T2 q2) p qf :=
 by
   intros H FF Ct1 Ct2 Cq1 Cq2 Cqf _ _ _ S M E V WFE ST
   rw [Finset.insert_eq, ←Finset.union_assoc] at H
@@ -1455,12 +787,12 @@ by
   · simp [st_chain]
   · simp [store_effect]
   · simp only [val_type]; rw [←WFE.t2l]; split_ands'; swap; introv MM _ HVT1 _ HVQ1
-    have ⟨S2, M2, vy, lsy, IHW1⟩ := @H S' M' (E ++ [.vtabs E t, .vbool false])
+    have ⟨S2, M2, vy, lsy, IHW1⟩ := @H S' M' (E ++ [.vtabs E t, .vnat 0])
         (V ++ [(vtnone, vars_locs V (p ∩ qf)), (vt, lsx)]) ?_ (by assumption)
     clear H; exists S2, M2, vy, lsy; obtain ⟨_, _, _, _, HVT2, HVQ2, _⟩ := IHW1
     split_ands'
     · -- store_effect
-      apply se_sub; assumption; simp [WFE.t2l, List.getElem_append_right]
+      apply se_sub; assumption; simp [WFE.t2l]
       rw [vars_locs_shrink]; simp [sets]; exact Cqf'.hfvs
     · -- val_qual
       simp at HVQ2; trans; assumption; simp [WFE.t2l, st_locs]; gcongr
@@ -1470,17 +802,15 @@ by
       rw [this, this, this]; clear this
       apply envt_extend_full (M := M) (p := p ∩ qf ∪ {%‖env‖}); rotate_left
       · clear * -; tauto
-      · simp [subst, sets] at FF ⊢; clear * - FF
-        rintro _ (⟨h, _⟩ | ⟨_, rfl⟩); specialize FF h; tauto; simp
-      · simp [Cqf'.hfvs, sets]; intros _ h1 h2; specialize HVQ1 h2
-        simp at HVQ1; obtain h | ⟨-, h⟩ := HVQ1; assumption
-        simp [WFE.t2l] at h1; contradiction
+      · clear * - FF; intro x; specialize @FF x; aesop (add simp [subst])
+      · simp [Cqf'.hfvs]; simp [WFE.t2l] at HVQ1 ⊢; clear *- HVQ1
+        intro x; specialize @HVQ1 x; aesop (add simp sets)
       · apply stchain_tighten; assumption; apply lls_mono
         simp [WFE.t2l, Cqf'.hfvs, sets]
       · simp [WFE.v2t]
       simp; split_ands'
-      · apply subst_tighten; c_extend; simp
-      · apply subst_tighten; c_extend; simp [sets]
+      · c_subst; c_extend;
+      · c_subst; c_extend;
       · simpa [val_type]
       · intro h; simp [subst] at h; simpa [h] using HVQ1
       apply envt_extend_full WFE; simp; simp; simp
@@ -1491,6 +821,15 @@ by
       trans; apply vars_locs_monotonic; swap; exact p; simp [sets]
       apply env_type_store_wf WFE
   · simp
+
+theorem sem_tabsa:
+  sem_type env (.ttabs none t) (.TAll T1 q1 T2 q2) p q →
+  sem_type env (.ttabs (T1, q1) t) (.TAll T1 q1 T2 q2) p q :=
+by
+  intro h; dsimp at *; introv WFE ST; specialize h WFE ST
+  obtain ⟨S', M', v, ls, h⟩ := h; exists S', M', v, ls; split_ands''
+  rename tevaln _ _ _ _ _ => h; obtain ⟨nm, h⟩ := h; exists nm; intros n h1
+  specialize h n h1; cases n; simp at h1; simpa [teval] using h
 
 theorem overlapping
   (_ /- ST0 -/ : store_type S M)
@@ -1528,7 +867,7 @@ theorem sem_app:
     else
       sem_qtp env qx q1) →
 
-  q2 \ {✦, #0, #1} ⊆ p →
+  q2 ⊆ p ∪ {✦, #0, #1} →
   (✦ ∈ qf → occurs .noneq T1 #0 ∧ occurs .noneq T2 #0) →
   (✦ ∈ qx → occurs .noneq T2 #1) →
   sem_type env (.tapp f t) ([#0 ↦ p ∩ qf] [#1 ↦ p ∩ qx] T2) p
@@ -1557,10 +896,10 @@ by
   -- shape VTX for application
   replace VTX: val_type M2 (V ++ [(vtnone, lsf')]) vx ([#0↦%‖V‖]T1) lsx' := by
     have Cqf := WFE.pclosed' (by simp: p ∩ qf ⊆ p); have := (valt_wf VTX).2
-    have Ct1 := by
-      apply closedty_extend (mb' := 1) (mf' := ‖V‖) this (by simp) (by simp)
+    have Ct1 := closedty_extend (mb' := 1) (mf' := ‖V‖) this (by simp) (by simp)
     rw [closedty_subst] at Ct1; rotate_left; assumption; simp!; simp
-    rwa [←valt_extend (V' := [(vtnone, lsf')]), ←ty.subst_open_chain #0 %‖V‖, valt_subst'] at VTX
+    rwa [←valt_extend (V' := [(vtnone, lsf')]), ←ty.subst_open_chain #0 %‖V‖,
+          valt_subst'] at VTX
     simp; exact ⟨rfl, rfl⟩; simp!; c_extend; assumption; simp [val_type]; rfl
     simp [Cqf.hfvs]; by_cases h: ✦ ∈ qf; left; split_ands; c_free;
     simp [FFr h]; right; simp [h, lsf']; c_free; assumption
@@ -1579,24 +918,26 @@ by
       if fr1: ✦ ∈ q1 then
         simp [fn1, fr1, subst, this, -Finset.subset_singleton_iff] at SEP ⊢
         obtain ⟨EX, XP, SEP⟩ := SEP; obtain ⟨-, -, EX⟩ := EX WFE1.1
-        replace SEP: vars_trans env (p ∩ qf) ∩ vars_trans env (p ∩ qx') ⊆ {✦} := by
+        replace SEP: vars_trans env (p∩qf) ∩ vars_trans env (p∩qx') ⊆ {✦} := by
           trans; swap; exact SEP; gcongr
           apply vt_mono; simp [sets]; apply vt_mono; simp [sets]
         apply overlapping (lsx := vars_locs V qx') ST ST1 at SEP; assumption'
         · simp at SEP; trans; assumption; trans (?_ ∪ ?_); gcongr
           trans; swap; exact EX; apply vars_locs_monotonic; simp [sets]
           intro _ h; exact h; rw [Set.union_assoc]; gcongr
-          simp [Set.eq_empty_iff_forall_not_mem] at SEP
-          simp [sets] at FM1 ⊢; rintro l (H1 | _) H; clear *- H1 H SEP; tauto
-          specialize FM1 H; omega
+          simp [Set.eq_empty_iff_forall_notMem] at SEP
+          clear *- FM1 SEP; intro x; specialize @FM1 x; specialize @SEP x
+          aesop (add simp sets, safe (by omega))
         · suffices ✦ ∉ qx' by
-            simp [this]; apply vars_locs_monotonic; simp [sets] at *; clear * - XP; tauto
+            simp [this]; apply vars_locs_monotonic
+            clear *- XP; aesop (add simp sets)
           intro h; have := WFE.pclosed' XP h; simp at this
         · simp
       else
         simp [fn1, fr1, subst, this] at SEP ⊢
         specialize SEP WFE.1; simp [SEP.1] at VQX; obtain ⟨-, -, -, SEP⟩ := SEP
-        trans; assumption; trans; swap; assumption; apply vars_locs_monotonic; simp [sets]
+        trans; assumption; trans; swap; assumption
+        apply vars_locs_monotonic; simp [sets]
   obtain ⟨S3, M3, vy, lsy, EV3, MM3, _, _, VTY, VQY⟩ := VTF
   exists S3, M3, vy, lsy; split_ands'
   · simp [tevaln] at EV1 EV2 EV3 ⊢
@@ -1608,12 +949,11 @@ by
     apply stchain_chain; assumption'
     simp [sets]; simp [st_chain] at MM1 MM2 MM3; omega
   · apply se_trans_sub; swap; assumption; apply se_trans; assumption'
-    simp [sets, ←ST.1]; rintro _ (H | H)
-    · specialize VQF H; simp at VQF; rcases VQF with VQF | _; swap; tauto
-      left; revert VQF; apply vars_locs_monotonic; simp [sets]
-    · specialize VQX H; simp at VQX; rcases VQX with VQX | _
-      left; revert VQX; apply vars_locs_monotonic; simp [sets]
-      right; simp [st_chain, sets] at MM1 ⊢; omega
+    simp [←ST.1]; simp [st_chain] at MM1; clear *- VQX VQF MM1
+    intro x; specialize @VQX x; specialize @VQF x
+    have := @vars_locs_monotonic _ _ V (by simp: p∩qx ⊆ p) x
+    have := @vars_locs_monotonic _ _ V (by simp: p∩qf ⊆ p) x
+    aesop (add simp sets, safe (by omega))
   · -- result type
     have Cqf := WFE.pclosed' (by simp: p ∩ qf ⊆ p)
     have Cqx := WFE.pclosed' (by simp: p ∩ qx ⊆ p)
@@ -1623,45 +963,36 @@ by
       ←ty.subst_open_chain #1 %(‖V‖ + 1),
       ty.open_subst_comm]; rotate_left
     simp; c_free; simp!; simp; c_free;
-    rw [occurs_subst]; simp; c_free; c_free; simp!
-    repeat apply subst_tighten
-    assumption; split_ands; simp!; c_extend; intro h; absurd h; c_free;
-    split_ands; simp!; c_extend; intro h; absurd h; c_free;
+    rw [occurs_subst]; simp; c_free; c_free; simp!; c_subst; assumption'
     rw [valt_subst']; rotate_left
-    simp [List.getElem_append_right]; exact ⟨rfl, rfl⟩; simp!; c_extend; assumption
+    simp; exact ⟨rfl, rfl⟩; simp!; c_extend; assumption
     simp [val_type]; rfl; simp [Cqf.hfvs]; rw [occurs_subst]; simp
     by_cases h: ✦ ∈ qf; left; split_ands; c_free;
     simp [FFr h]; right; simp [h, lsf']; c_free; simp; simp!
     rwa [valt_subst']
-    simp [List.getElem_append_right]; exact ⟨rfl, rfl⟩; simp!; c_extend; assumption
+    simp; exact ⟨rfl, rfl⟩; simp!; c_extend; assumption
     simp [val_type]; rfl; simp [Cqx.hfvs]
     by_cases h: ✦ ∈ qx; left; split_ands; c_free;
     simp [XFr h]; right; simp [h, lsx']
   · -- result qualifier
     trans; assumption; clear VQY
     have: closed_ql.fvs ‖V‖ q2 := by apply closed_ql.hfvs; assumption
-    simp [Finset.inter_subst]; simp [subst, List.getElem_append_right]
-    simp [this, sets, or_assoc]; clear this
-    intros l VQY; simp [st_chain] at MM1 MM2
-    rcases VQY with VQY | VQY | VQY | VQY
-    · left; have: q2 \ {✦, #0, #1} ⊆ p ∩ q2 := by
-        apply Finset.subset_inter; assumption; simp
-      apply vars_locs_monotonic; assumption'; simpa [Finset.insert_eq]
-    · clear * - VQY VQX MM1; rcases VQY with ⟨hx, VQY⟩; simp [hx]
-      specialize VQX VQY; simp at VQX; rcases VQX with _ | ⟨hfr, _⟩; tauto
-      simp [hfr]; right; right; right; omega
-    · clear * - VQY VQF; rcases VQY with ⟨h, VQY⟩; simp [h]; specialize VQF VQY
-      simp at VQF; right; right; tauto
-    · simp [VQY.1]; right; right; right; omega
+    simp [Finset.inter_subst]; simp [subst]; simp [this]
+    clear this; intros l; simp [st_chain] at MM1 MM2
+    replace Cq2: q2 ⊆ p ∩ q2 ∪ {✦, #0, #1} := by
+      clear *- Cq2; aesop (add simp sets)
+    clear *- Cq2 VQF VQX MM1 MM2; specialize @VQF l; specialize @VQX l
+    replace Cq2 := @vars_locs_monotonic _ _ V Cq2 l
+    simp [Finset.insert_eq] at Cq2; aesop (add simp sets, safe (by omega))
 
 theorem sem_app_classic:
   sem_type env f (.TFun T1 q1 T2 q2) p qf →
   sem_type env t T1 p qx →
   #0 ∈ q1 ∨ sem_qtp env qx q1 ∨ ✦ ∈ q1 ∧
     sem_qtp env ((vars_trans env qf) ∩ (vars_trans env qx)) q1 ∧
-    (vars_trans env qf ∩ vars_trans env qx) \ {✦} ⊆ p →
+    (vars_trans env qf ∩ vars_trans env qx) ⊆ p ∪ {✦} →
 
-  q2 \ {✦, #0, #1} ⊆ p →
+  q2 ⊆ p ∪ {✦, #0, #1} →
   (✦ ∈ qf → occurs .noneq T2 #0) →
   (✦ ∈ qx → occurs .noneq T2 #1) →
   sem_type env (.tapp f t) ([#0 ↦ p ∩ qf] [#1 ↦ p ∩ qx] T2) p
@@ -1713,8 +1044,6 @@ by
           clear *- this; simp [sets] at *; tauto
         trans; swap; exact SEP.2.2.2
         apply overlapping ST ST1; assumption'
-        rename _ \ {✦} ⊆ p => h; clear *- h; simp [sets] at *
-        have: ∀a b, (¬a → b) ↔ b ∨ a := (by tauto); simpa [this] using h
         gcongr; apply vt_mono; simp; apply vt_mono; simp
   obtain ⟨S3, M3, vy, lsy, EV3, MM3, _, _, VTY, VQY⟩ := VTF
   exists S3, M3, vy, lsy; split_ands'
@@ -1727,12 +1056,11 @@ by
     apply stchain_chain; assumption'
     simp [sets]; simp [st_chain] at MM1 MM2 MM3; omega
   · apply se_trans_sub; swap; assumption; apply se_trans; assumption'
-    simp [sets, ←ST.1]; rintro _ (H | H)
-    · specialize VQF H; simp at VQF; rcases VQF with VQF | _; swap; tauto
-      left; revert VQF; apply vars_locs_monotonic; simp [sets]
-    · specialize VQX H; simp at VQX; rcases VQX with VQX | _
-      left; revert VQX; apply vars_locs_monotonic; simp [sets]
-      right; simp [st_chain, sets] at MM1 ⊢; omega
+    simp [←ST.1]; simp [st_chain] at MM1; clear *- VQX VQF MM1
+    intro x; specialize @VQX x; specialize @VQF x
+    have := @vars_locs_monotonic _ _ V (by simp: p∩qx ⊆ p) x
+    have := @vars_locs_monotonic _ _ V (by simp: p∩qf ⊆ p) x
+    aesop (add simp sets, safe (by omega))
   · -- result type
     have Cqf := WFE.pclosed' (by simp: p ∩ qf ⊆ p)
     have Cqx := WFE.pclosed' (by simp: p ∩ qx ⊆ p)
@@ -1741,61 +1069,52 @@ by
       ←ty.subst_open_chain #0 %‖V‖,
       ←ty.subst_open_chain #1 %(‖V‖ + 1),
       ty.open_subst_comm]; rotate_left
-    simp; c_free; simp!; simp; c_free;
-    rw [occurs_subst]; simp; c_free; c_free; simp!
-    repeat apply subst_tighten
-    assumption; split_ands; simp!; c_extend; intro h; absurd h; c_free;
-    split_ands; simp!; c_extend; intro h; absurd h; c_free;
-    rw [valt_subst']; rotate_left
-    simp [List.getElem_append_right]; exact ⟨rfl, rfl⟩; simp!; c_extend; assumption
+    simp; c_free; simp!; simp; c_free; rw [occurs_subst]; simp; c_free; c_free; simp!
+    c_subst; assumption'; rw [valt_subst']; rotate_left
+    simp; exact ⟨rfl, rfl⟩; simp!; c_extend; assumption
     simp [val_type]; rfl; simp [Cqf.hfvs]; rw [occurs_subst]; simp
     by_cases h: ✦ ∈ qf; left; split_ands; c_free;
     simp [FFr h]; right; simp [h, lsf']; c_free; simp; simp!
     rwa [valt_subst']
-    simp [List.getElem_append_right]; exact ⟨rfl, rfl⟩; simp!; c_extend; assumption
+    simp; exact ⟨rfl, rfl⟩; simp!; c_extend; assumption
     simp [val_type]; rfl; simp [Cqx.hfvs]
     by_cases h: ✦ ∈ qx; left; split_ands; c_free;
     simp [XFr h]; right; simp [h, lsx']
   · -- result qualifier
     trans; assumption; clear VQY
     have: closed_ql.fvs ‖V‖ q2 := by apply closed_ql.hfvs; assumption
-    simp [Finset.inter_subst]; simp [subst, List.getElem_append_right]
-    simp [this, sets, or_assoc]; clear this
-    intros l VQY; simp [st_chain] at MM1 MM2
-    rcases VQY with VQY | VQY | VQY | VQY
-    · left; have: q2 \ {✦, #0, #1} ⊆ p ∩ q2 := by
-        apply Finset.subset_inter; assumption; simp
-      apply vars_locs_monotonic; assumption'; simpa [Finset.insert_eq]
-    · clear * - VQY VQX MM1; rcases VQY with ⟨hx, VQY⟩; simp [hx]
-      specialize VQX VQY; simp at VQX; rcases VQX with _ | ⟨hfr, _⟩; tauto
-      simp [hfr]; right; right; right; omega
-    · clear * - VQY VQF; rcases VQY with ⟨h, VQY⟩; simp [h]; specialize VQF VQY
-      simp at VQF; right; right; tauto
-    · simp [VQY.1]; right; right; right; omega
+    simp [Finset.inter_subst]; simp [subst]; simp [this]
+    clear this; intros l; simp [st_chain] at MM1 MM2
+    replace Cq2: q2 ⊆ p ∩ q2 ∪ {✦, #0, #1} := by
+      clear *- Cq2; aesop (add simp sets)
+    clear *- Cq2 VQF VQX MM1 MM2; specialize @VQF l; specialize @VQX l
+    replace Cq2 := @vars_locs_monotonic _ _ V Cq2 l
+    simp [Finset.insert_eq] at Cq2; aesop (add simp sets, safe (by omega))
 
 -- ttabs with fsub
 
 @[simp]
-def sem_stp G q0 gr T1 T2 :=
+def sem_stp G T1 q1 T2 q2 :=
   ∀ ⦃S M E V p⦄,
     env_type1 M E G V p →
     store_type S M →
-    vars_locs V (q0 ∪ gr) ⊆ vars_locs V p →
+    (✦ ∈ q1 → ✦ ∈ q2) ∧ vars_locs V q1 ⊆ vars_locs V q2 ∧
+    (vars_locs V q2 ⊆ vars_locs V p →
     ∀ ⦃v ls⦄,
       val_type M V v T1 ls →
-      (✦ ∉ q0 → ls ⊆ vars_locs V q0) →
-      ∃ gl ⊆ vars_locs V (q0 ∪ gr),
-        val_type M V v T2 (ls ∪ gl)
+      (✦ ∉ q1 → ls ⊆ vars_locs V q1) →
+      ∃ gl ⊆ vars_locs V q2,
+        val_type M V v T2 (ls ∪ gl))
 
 theorem sem_tapp:
   sem_type env f (.TAll T1 q1 T2 q2) p qf →
   closed_ty 0 ‖env‖ Tx →
-  sem_stp env {✦} ∅ Tx T1 →
+  sem_stp env Tx {✦} T1 {✦} →
   #0 ∈ q1 ∨ sem_qtp env qx q1 ∨ ✦ ∈ q1 ∧
     sem_qtp env ((vars_trans env qf) ∩ (vars_trans env qx)) q1 ∧
-    (vars_trans env qf ∩ vars_trans env qx) \ {✦} ⊆ p →
+    (vars_trans env qf ∩ vars_trans env qx) ⊆ p ∪ {✦} →
 
-  q2 \ {✦, #0, #1} ⊆ p →
+  q2 ⊆ p ∪ {✦, #0, #1} →
   (✦ ∈ qf → occurs .noneq T2 #0) →
   (✦ ∈ qx → occurs .noneq T2 #1) →
   sem_type env (.ttapp f Tx qx) ([#0 ↦ p ∩ qf] [#1 ↦ (Tx, p ∩ qx)] T2) p
@@ -1842,8 +1161,6 @@ by
         trans; swap; exact SEP.2.2.2
         apply overlapping ST ST1; assumption'
         simp [st_chain]; simp [lsx']
-        rename _ \ {✦} ⊆ p => h; clear *- h; simp [sets] at *
-        have: ∀a b, (¬a → b) ↔ b ∨ a := (by tauto); simpa [this] using h
         gcongr; apply vt_mono; simp; apply vt_mono; simp
   obtain ⟨S3, M3, vy, lsy, EV3, MM3, _, _, VTY, VQY⟩ := VTF
   exists S3, M3, vy, lsy; split_ands'
@@ -1855,10 +1172,11 @@ by
   · apply stchain_tighten; apply stchain_chain; assumption'
     simp [sets]; simp [st_chain] at MM1; omega
   · apply se_trans_sub; assumption'
-    simp [sets, ←ST.1]; rintro _ (H | H)
-    · specialize VQF H; simp at VQF; rcases VQF with VQF | _; swap; tauto
-      left; revert VQF; apply vars_locs_monotonic; simp [sets]
-    · simp [lsx'] at H; left; revert H; apply vars_locs_monotonic; simp [sets]
+    simp [←ST.1]; simp [st_chain] at MM1; clear *- VQF MM1
+    intro x; specialize @VQF x
+    have := @vars_locs_monotonic _ _ V (by simp: p∩qx ⊆ p) x
+    have := @vars_locs_monotonic _ _ V (by simp: p∩qf ⊆ p) x
+    aesop (add simp sets, safe (by omega))
   · -- result type
     have Cqf := WFE.pclosed' (by simp: p ∩ qf ⊆ p)
     have Cqx := WFE.pclosed' (by simp: p ∩ qx ⊆ p)
@@ -1867,179 +1185,231 @@ by
       ←ty.subst_open_chain #0 %‖V‖,
       ←ty.subst_open_chain #1 %(‖V‖ + 1),
       ty.open_subst_comm]; rotate_left
-    simp; c_free; c_free; simp; c_free;
-    rw [occurs_subst]; simp; c_free; c_free; c_free;
-    repeat apply subst_tighten
-    assumption; split_ands'; c_extend; intro h; absurd h; c_free;
-    split_ands; simp!; c_extend; intro h; absurd h; c_free;
-    rw [valt_subst']; rotate_left
-    simp [List.getElem_append_right]; exact ⟨rfl, rfl⟩; simp!; c_extend; assumption
+    simp; c_free; c_free; simp; c_free; rw [occurs_subst]; simp; c_free; c_free; c_free;
+    c_subst; assumption'; split_ands'; rw [valt_subst']; rotate_left
+    simp; exact ⟨rfl, rfl⟩; simp!; c_extend; assumption
     simp [val_type]; rfl; simp [Cqf.hfvs]; rw [occurs_subst]; simp
     by_cases h: ✦ ∈ qf; left; split_ands; c_free;
     simp [FFr h]; right; simp [h, lsf']; c_free; c_free;
     rwa [valt_subst']
-    simp [List.getElem_append_right]; exact ⟨rfl, rfl⟩; c_extend; c_extend; assumption
+    simp; exact ⟨rfl, rfl⟩; c_extend; c_extend; assumption
     simp [vtx]; ext; rwa [valt_extend]
     by_cases h: ✦ ∈ qx; left; simp; split_ands; c_free;
     simp [XFr h]; right; simp [h, lsx', Cqx.hfvs]
   · -- result qualifier
     trans; assumption; clear VQY
     have: closed_ql.fvs ‖V‖ q2 := by apply closed_ql.hfvs; assumption
-    simp [Finset.inter_subst]; simp [subst, List.getElem_append_right]
-    simp [this, sets, or_assoc]; clear this
-    intros l VQY; simp [st_chain] at MM1
-    rcases VQY with VQY | VQY | VQY | VQY
-    · left; have: q2 \ {✦, #0, #1} ⊆ p ∩ q2 := by
-        apply Finset.subset_inter; assumption; simp
-      apply vars_locs_monotonic; assumption'; simpa [Finset.insert_eq]
-    · simp [lsx'] at VQY; simp [VQY]
-    · clear * - VQY VQF; rcases VQY with ⟨h, VQY⟩; simp [h]; specialize VQF VQY
-      simp at VQF; right; right; tauto
-    · simp [VQY.1]; right; right; right; omega
+    simp [Finset.inter_subst]; simp [subst]; simp [this]
+    clear this; intros l; simp [st_chain] at MM1
+    replace Cq2: q2 ⊆ p ∩ q2 ∪ {✦, #0, #1} := by
+      clear *- Cq2; aesop (add simp sets)
+    clear *- Cq2 VQF MM1; specialize @VQF l
+    replace Cq2 := @vars_locs_monotonic _ _ V Cq2 l
+    simp [Finset.insert_eq] at Cq2; aesop (add simp sets, safe (by omega))
 
 -- subtyping
 
 theorem sem_sub:
   sem_type G t T1 p q1 →
-  sem_stp G q1 gr T1 T2 →
-  sem_qtp G (q1 ∪ gr) q2 →
-  q2 \ {✦} ⊆ p →
+  sem_stp G T1 q1 T2 q2 →
+  q2 ⊆ p ∪ {✦} →
   sem_type G t T2 p q2 :=
 by
-  intros HT STP QTP Q2P; dsimp; introv WFE ST
+  intros HT STP Q2P; dsimp; introv WFE ST
   obtain ⟨S', M', v, ls, _, MM, ST', _, VT, VQ, EQ⟩ := HT WFE ST
   have WFE': env_type M' E G V p := by
     apply envt_store_change; assumption; apply stchain_tighten; assumption
     apply lls_closed' ST; apply env_type_store_wf WFE
-  specialize QTP WFE'.1; obtain ⟨Q1, _, _, Q2⟩ := QTP
   have VL1: vars_locs V (p ∩ q1) ⊆ vars_locs V q1 := by
     apply vars_locs_monotonic; simp
   have VL2: vars_locs V q2 ⊆ vars_locs V (p ∩ q2) := by
-    trans vars_locs V (q2 \ {✦}); simp; apply vars_locs_monotonic
-    clear *- Q2P; simp [sets] at *; tauto
-  specialize STP WFE'.1 ST' _ VT _
-  · trans; assumption; trans; assumption; apply vars_locs_monotonic; simp
+    trans vars_locs V (p ∩ q2 ∪ {✦}); apply vars_locs_monotonic
+    clear *- Q2P; intro x; specialize @Q2P x; simp [sets] at *; tauto; simp
+  obtain ⟨Q1, Q2, STP⟩ := STP WFE'.1 ST'; specialize STP _ VT _
+  · trans; assumption; apply vars_locs_monotonic; simp
   · simp at VQ; intro h; simp [h] at VQ; trans; assumption'
   obtain ⟨ls', VQ', VT'⟩ := STP; exists S', M', v, ls ∪ ls'; split_ands'
-  · simp at VQ; clear *- Q2 VQ VQ' Q1 VL1 VL2; rw [Set.union_comm]
-    trans ?_ ∪ ?_; gcongr; assumption'; rw [←Set.union_assoc]; gcongr
-    trans; trans ?_ ∪ ?_; gcongr; assumption'
-    apply Set.union_subset; simp; trans; swap; assumption; simp
-    simp [sets]; intro _ h1 h2; simp [Q1, h1, h2]
-  · split <;> simp at EQ
-    trans; assumption; simp; simp
-
-theorem sem_stp_trans:
-  sem_stp G q0 g1 T1 T2 →
-  sem_stp G (q0 ∪ g1) g2 T2 T3 →
-  sem_stp G q0 (g1 ∪ g2) T1 T3 :=
-by
-  intros S1 S2; dsimp; introv WFE ST C VT1 VQ1; simp at C
-  specialize S1 WFE ST _ VT1 VQ1
-  · trans; swap; assumption; simp [sets]; clear *-; tauto
-  obtain ⟨gl1, VQ2, VT2⟩ := S1; specialize S2 WFE ST _ VT2 _
-  · trans; swap; assumption; simp [sets]
-  · intro h; simp at h; specialize VQ1 h.1
-    apply Set.union_subset; trans; assumption; simp; assumption
-  obtain ⟨gl2, VQ3, VT3⟩ := S2; exists gl1 ∪ gl2
-  rw [←Set.union_assoc, ←Finset.union_assoc]; split_ands'
-  apply Set.union_subset
-  trans; assumption; simp [sets]; clear *-; tauto; assumption
+  · simp at VQ; clear *- Q2 VQ VQ' Q1 VL1 VL2; intro l
+    specialize @VL1 l; specialize @VL2 l; specialize @Q2 l
+    specialize @VQ' l; specialize @VQ l; aesop
+  · split <;> simp at EQ; trans; assumption; simp; simp
 
 theorem sem_stp_refl:
-  sem_stp G q0 ∅ T T :=
+  sem_qtp G q1 q2 →
+  sem_stp G T q1 T q2 :=
 by
-  dsimp; introv WFE ST C VT VQ; exists ∅; simpa
+  intro QTP; dsimp; introv WFE ST; specialize QTP WFE; split_ands''
+  intros; exists ∅; simpa
+
+theorem sem_stp_trans:
+  sem_stp G T1 q1 T2 q2 →
+  sem_stp G T2 q2 T3 q3 →
+  sem_stp G T1 q1 T3 q3 :=
+by
+  intros S1 S2; dsimp; introv WFE ST; specialize S1 WFE ST; specialize S2 WFE ST
+  obtain ⟨Q1a, Q1b, S1⟩ := S1; obtain ⟨Q2a, Q2b, S2⟩ := S2; split_ands
+  clear *- Q1a Q2a; tauto; trans; assumption'
+  introv C3 VT1 VQ1; specialize S1 _ VT1 VQ1; trans; assumption'
+  obtain ⟨gl1, VQ2, VT2⟩ := S1; specialize S2 C3 VT2 _
+  · clear *- Q1a Q1b VQ1 VQ2; aesop (add simp sets)
+  obtain ⟨gl2, VQ3, VT3⟩ := S2; exists gl1 ∪ gl2; split_ands
+  · apply Set.union_subset; trans; assumption'
+  convert VT3 using 1; ext; simp; clear *-; tauto
 
 theorem sem_stp_top:
-  sem_stp G q0 ∅ T .TTop :=
+  sem_stp G T q .TTop q :=
 by
-  dsimp; introv WFE ST C VT VQ; exists ∅; simp [val_type]
+  simp; introv WFE ST C VT VQ; exists ∅; simp [val_type]
   exact (valt_wf VT).1
 
-theorem sem_stp_ref:
-  sem_stp G {✦} ∅ T1 T2 →
-  sem_stp G {✦} ∅ T2 T1 →
-  sem_qtp G (q1 \ {#0}) (q2 \ {#0}) →
-  sem_qtp G (q2 \ {#0}) (q1 \ {#0}) →
-  (#0 ∈ q1 ↔ #0 ∈ q2) →
-  ✦ ∉ q1 → ✦ ∉ q2 →
-  closed_ty 0 ‖G‖ T2 →
-  sem_stp G q0 ∅ (.TRef T1 q1) (.TRef T2 q2) :=
+theorem sem_stp_ref2:
+  sem_stp (G ++ [(.TTop, q0, .self)]) ([#0 ↦ %‖G‖] T1b) {✦} ([#0 ↦ %‖G‖] T1a) ({✦} ∪ gr1) →
+  sem_stp (G ++ [(.TTop, q0, .self)]) ([#0 ↦ %‖G‖] T2a) {✦} ([#0 ↦ %‖G‖] T2b) ({✦} ∪ gr2) →
+  sem_qtp (G ++ [(.TTop, q0, .self)]) (gr1 ∪ q1b) q1a →
+  sem_qtp (G ++ [(.TTop, q0, .self)]) (gr2 ∪ [#0 ↦ %‖G‖] q2a) ([#0 ↦ %‖G‖] q2b) →
+  closed_ty 0 ‖G‖ (.TRef2 T1b q1b T2b q2b) →
+  closed_ql true 0 ‖G‖ q0 →
+  gr1 ⊆ q0 ∪ {%‖G‖} → gr2 ⊆ q0 ∪ {%‖G‖} →
+  sem_stp G (.TRef2 T1a q1a T2a q2a) q0 (.TRef2 T1b q1b T2b q2b) q0 :=
 by
-  intros S1 S2 Q1 Q2 Hself Hfr1 Hfr2 Ct2; dsimp; introv WFE ST QP; simp at QP
-  specialize S1 WFE ST (by simp); specialize S2 WFE ST (by simp)
-  obtain ⟨-, Cq1, Cq2, Q1⟩ := Q1 WFE; obtain ⟨-, -, -, Q2⟩ := Q2 WFE
-  replace Cq1: closed_ql false 1 ‖G‖ q1 := by
-    apply closedql_fr_tighten; assumption; apply closedql_bv_widen; assumption
-  replace Cq2: closed_ql false 1 ‖G‖ q2 := by
-    apply closedql_fr_tighten; assumption; apply closedql_bv_widen; assumption
-  introv VT1 VQ1; cases v <;> simp [val_type] at VT1
-  exists ∅; simp [val_type]; simp [WFE.t2l] at Ct2 Cq1 Cq2
-  split_ands''; rename_i VT1; simp at Q1 Q2
-  have: vars_locs V q1 = vars_locs V q2 := by
-    clear * - Q1 Q2; ext; tauto
-  simp [subst, WFE.t2l, Cq1.hfvs, Cq2.hfvs, Hself, this] at VT1 ⊢
-  simp [subst, this, Hself, Hfr1, Hfr2] at S1 S2
-  obtain ⟨vt, qt, HM, LQ1, LQ2, VT1⟩ := VT1; exists vt, qt; split_ands'
-  introv _; rw [VT1]; constructor; apply S1; apply S2; assumption
+  intros S1 S2 Q1 Q2 C Cq0 _ _; simp; introv WFE ST QP VT VQ
+  let gl := vars_locs V q0; exists gl; simp! [WFE.t2l] at C Cq0
+  obtain ⟨_, _, Cq1b, _, Cq1', _, _⟩ := C; apply closedql_bv_tighten at Cq1b
+  assumption'; clear Cq1'; have h: ls ∪ gl ⊆ st_locs M := by
+    apply Set.union_subset; apply (valt_wf VT).1; trans; assumption
+    apply env_type1_store_wf WFE
+  apply valt_grow at VT; specialize VT _ h; simp
+  cases v <;> simp [val_type] at VT; rename_i l _; simp [val_type]
+  obtain ⟨_, _, Cq1a, _, _, _, _, -, vt, qt, ML, VT⟩ := VT; split_ands'
+  simp [ML, and_assoc]; introv SC ST; specialize VT SC ST
+  have WFE1 := by
+    have: env_cell M V {%‖V‖} ‖V‖ .TTop q0 .self (.vref l) vtnone (ls ∪ gl) := by
+      simp [gl]; split_ands'; simpa [val_type]
+      intro h; specialize VQ h; apply Set.union_subset; assumption; simp
+    apply envt1_extend_stub WFE _ _ _ this; exact ∅
+    simp; simp [st_chain]; simp [WFE.v2l]
+  simp at WFE1; apply envt1_store_change (M':=M') at WFE1
+  specialize WFE1 _; apply stchain_tighten; assumption; simp; split_ands
+  · replace VT := VT.1; intros _ _ h1 h2; specialize S1 WFE1 ST
+    simp [WFE.t2l] at S1; specialize S1 _ h2
+    · trans; apply vars_locs_monotonic; assumption; simp [gl, Cq0.hfvs, WFE.t2l]
+      clear *-; simp [sets]; tauto
+    obtain ⟨gl1, S1a, S1b⟩ := S1; apply VT; assumption'
+    specialize Q1 WFE1; simp at Q1; obtain ⟨-, -, -, Q1⟩ := Q1
+    trans ?_ ∪ ?_; gcongr; assumption'; rw [Set.union_comm]
+    simpa [Cq1a.hfvs, Cq1b.hfvs] using Q1
+  · replace VT := VT.2; intro _ _ h1 h2; specialize VT _ _ h1 h2
+    obtain ⟨lsv', h3, h4⟩ := VT; specialize S2 WFE1 ST; simp [WFE.t2l] at S2
+    specialize S2 _ h4
+    · trans; apply vars_locs_monotonic; assumption; simp [WFE.t2l, gl, Cq0.hfvs]
+      clear *-; simp [sets]; tauto
+    obtain ⟨gl2, _, _⟩ := S2; exists lsv' ∪ gl2; split_ands'
+    specialize Q2 WFE1; simp [WFE.t2l] at Q2; rw [Set.union_comm]
+    trans ?_ ∪ ?_; gcongr; assumption'; exact Q2.2.2.2
 
-theorem sem_stp_ref_grow:
-  sem_stp G {✦} ∅ T1 T2 →
-  sem_stp G {✦} ∅ T2 T1 →
-  sem_qtp G (q2 \ {#0}) (q1 \ {#0}) →
-  sem_qtp G (q1 \ {#0}) ([#0 ↦ g] q2) →
-  #0 ∈ q2 →
-  ✦ ∉ q1 → ✦ ∉ q2 →
-  closed_ty 0 ‖G‖ T2 →
-  sem_stp G q g (.TRef T1 q1) (.TRef T2 q2) :=
+theorem sem_stp_pair:
+  sem_stp (G ++ [(.TTop, q0, .self)]) ([#0 ↦ %‖G‖] T1a) {✦} ([#0 ↦ %‖G‖] T1b) ({✦} ∪ gr1) →
+  sem_stp (G ++ [(.TTop, q0, .self)]) ([#0 ↦ %‖G‖] T2a) {✦} ([#0 ↦ %‖G‖] T2b) ({✦} ∪ gr2) →
+  sem_qtp (G ++ [(.TTop, q0, .self)]) (gr1 ∪ [#0 ↦ %‖G‖] q1a) ([#0 ↦ %‖G‖] q1b) →
+  sem_qtp (G ++ [(.TTop, q0, .self)]) (gr2 ∪ [#0 ↦ %‖G‖] q2a) ([#0 ↦ %‖G‖] q2b) →
+  closed_ty 0 ‖G‖ (.TProd T1b q1b T2b q2b) →
+  closed_ql true 0 ‖G‖ q0 →
+  gr1 ⊆ q0 ∪ {%‖G‖} → gr2 ⊆ q0 ∪ {%‖G‖} →
+  sem_stp G (.TProd T1a q1a T2a q2a) q0 (.TProd T1b q1b T2b q2b) q0 :=
 by
-  intros S1 S2 Q1 Q2 Hself Hfr1 Hfr2 Ct2; dsimp; introv WFE ST QP; simp at QP
-  specialize S1 WFE ST (by simp); specialize S2 WFE ST (by simp); simp at S1 S2
-  obtain ⟨-, Cq2, Cq1, Q1⟩ := Q1 WFE; obtain ⟨-, -, -, Q2⟩ := Q2 WFE
-  replace Cq1: closed_ql false 1 ‖G‖ q1 := by
-    apply closedql_fr_tighten; assumption; apply closedql_bv_widen; assumption
-  replace Cq2: closed_ql false 1 ‖G‖ q2 := by
-    apply closedql_fr_tighten; assumption; apply closedql_bv_widen; assumption
-  introv VT1 VQ1; cases v <;> simp [val_type] at VT1
-  exists vars_locs V g; simp [val_type]; simp [WFE.t2l] at Ct2 Cq1 Cq2
-  split_ands''; tauto
-  · apply Set.union_subset; assumption; trans; swap; apply env_type1_store_wf WFE
-    trans; swap; assumption; simp
-  rename_i VT1; simp [subst, Hself, Cq1.hfvs, Cq2.hfvs] at Q1 Q2 VT1 ⊢
-  obtain ⟨vt, qt, HM, LQ1, LQ2, VT1⟩ := VT1; exists vt, qt; split_ands'
-  · trans; assumption; clear *- Q2; apply Set.union_subset; trans; assumption
-    simp [sets]; tauto; simp [sets]; tauto
-  · trans; assumption'
-  · introv _; rw [VT1]; constructor; apply S1; apply S2; assumption
+  intros S1 S2 Q1 Q2 C Cq0 _ _; simp; introv WFE ST QP VT VQ
+  let gl := vars_locs V q0; exists gl; simp! [WFE.t2l] at C Cq0
+  obtain ⟨_, _, Cq1b, _, _, _⟩ := C; have h: ls ∪ gl ⊆ st_locs M := by
+    apply Set.union_subset; apply (valt_wf VT).1; trans; assumption
+    apply env_type1_store_wf WFE
+  apply valt_grow at VT; specialize VT _ h; simp
+  cases v <;> simp only [val_type] at VT; rename_i v1 v2 _; simp only [val_type]
+  obtain ⟨_, _, Cq1a, _, _, _, -, VT⟩ := VT; split_ands'; introv SC ST
+  specialize VT SC ST; have WFE1 := by
+    have: env_cell M V {%‖V‖} ‖V‖ .TTop q0 .self (.vpair v1 v2) vtnone (ls ∪ gl) := by
+      simp [gl]; split_ands'; simpa [val_type]
+      intro h; specialize VQ h; apply Set.union_subset; assumption; simp
+    apply envt1_extend_stub WFE _ _ _ this; exact ∅
+    simp; simp [st_chain]; simp [WFE.v2l]
+  simp at WFE1; apply envt1_store_change (M':=M') at WFE1
+  specialize WFE1 _; apply stchain_tighten; assumption; simp
+  obtain ⟨ls1, ls2, VQ1, VT1, VQ2, VT2⟩ := VT
+  -- start subtyping
+  simp only [WFE.t2l] at S1 S2 Q1 Q2
+  specialize S1 WFE1 ST; simp at S1; specialize S1 _
+  · trans; apply vars_locs_monotonic; assumption; simp [←WFE.t2l]
+    simp [Cq0.hfvs, gl]; clear *-; aesop (add simp sets)
+  specialize S1 VT1; obtain ⟨gl1, VT1', VQ1'⟩ := S1
+  specialize S2 WFE1 ST; simp at S2; specialize S2 _
+  · trans; apply vars_locs_monotonic; assumption; simp [←WFE.t2l]
+    simp [Cq0.hfvs, gl]; clear *-; aesop (add simp sets)
+  specialize S2 VT2; obtain ⟨gl2, VT2', VQ2'⟩ := S2
+  exists ls1 ∪ gl1, ls2 ∪ gl2; split_ands'
+  · obtain ⟨-, -, -, Q1⟩ := Q1 WFE1; trans; swap; assumption
+    rw [Set.union_comm, vars_locs_or]; gcongr
+  · obtain ⟨-, -, -, Q2⟩ := Q2 WFE1; trans; swap; assumption
+    rw [Set.union_comm, vars_locs_or]; gcongr
+
+theorem sem_stp_list:
+  sem_stp (G ++ [(.TTop, q0, .self)]) ([#0 ↦ %‖G‖] T1) {✦} ([#0 ↦ %‖G‖] T2) ({✦} ∪ gr) →
+  closed_ty 0 ‖G‖ (.TList T2) →
+  closed_ql true 0 ‖G‖ q0 →
+  gr ⊆ q0 ∪ {%‖G‖} →
+  sem_stp G (.TList T1) q0 (.TList T2) q0 :=
+by
+  intros S C Cq0 _ _; simp; introv WFE ST QP VT VQ
+  let gl := vars_locs V q0; exists gl; simp! [WFE.t2l] at C Cq0
+  obtain ⟨_, _⟩ := C; have h: ls ∪ gl ⊆ st_locs M := by
+    apply Set.union_subset; apply (valt_wf VT).1; trans; assumption
+    apply env_type1_store_wf WFE
+  apply valt_grow at VT; specialize VT _ h; simp
+  cases v <;> simp only [val_type] at VT; rename_i lst _; simp only [val_type]
+  obtain ⟨_, _, -, VT⟩ := VT; split_ands'; introv h
+  specialize VT _ h; have WFE1 := by
+    have: env_cell M V {%‖V‖} ‖V‖ .TTop q0 .self (.vlist lst) vtnone (ls ∪ gl) := by
+      simp [gl]; split_ands'; simpa [val_type]
+      intro h; specialize VQ h; apply Set.union_subset; assumption; simp
+    apply envt1_extend_stub WFE _ _ _ this; exact ∅
+    simp; simp [st_chain]; simp [WFE.v2l]
+  simp at WFE1; obtain ⟨ls1, _, VT⟩ := VT
+  -- start subtyping
+  simp only [WFE.t2l] at S
+  specialize S WFE1 ST; simp at S; specialize S _
+  · trans; apply vars_locs_monotonic; assumption; simp [←WFE.t2l]
+    simp [Cq0.hfvs, gl]; clear *-; aesop (add simp sets)
+  specialize S VT; obtain ⟨gl1, VT1', VQ1'⟩ := S
+  exists ls1 ∪ gl1; split_ands'; apply Set.union_subset; assumption
+  trans; assumption; trans; apply vars_locs_monotonic; assumption
+  simp [WFE.t2l, Cq0.hfvs, gl]; clear *-; aesop (add simp sets)
 
 theorem sem_stp_fun:
   closed_ty 0 ‖G‖ (.TFun T1b q1b T2b q2b) →
   closed_ql true 0 ‖G‖ qf0 →
-  closed_ql false 0 ‖G‖ grf →
-  sem_stp (G ++ [(.TTop, qf0 ∪ grf, .self)]) {✦}
-     gr1  ([#0 ↦ %‖G‖] T1b) ([#0 ↦ %‖G‖] T1a) →
-  {#0, ✦} ⊆ q1a ∨ sem_qtp (G ++ [(.TTop, qf0 ∪ grf, .self)])
+  ✦ ∉ gr1 →
+  sem_stp (G ++ [(.TTop, qf0, .self)])
+    ([#0 ↦ %‖G‖] T1b) {✦} ([#0 ↦ %‖G‖] T1a) ({✦} ∪ gr1) →
+  {#0, ✦} ⊆ q1a ∨ sem_qtp (G ++ [(.TTop, qf0, .self)])
     (gr1 ∪ [#0 ↦ %‖G‖] q1b) ([#0 ↦ %‖G‖] q1a) →
-  sem_stp (G ++ [(.TTop, qf0 ∪ grf, .self), ([#0 ↦ %‖G‖] T1b, [#0 ↦ %‖G‖] q1b, .var)]) {✦}
-     gr2  ([#0 ↦ %‖G‖] [#1 ↦ (%(‖G‖+1), gr1)] T2a) ([#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] T2b) →
-  sem_qtp (G ++ [(.TTop, qf0 ∪ grf, .self), ([#0 ↦ %‖G‖] T1b, [#0 ↦ %‖G‖] q1b, .var)])
+  sem_stp (G ++ [(.TTop, qf0, .self), ([#0 ↦ %‖G‖] T1b, [#0 ↦ %‖G‖] q1b, .var)])
+    ([#0 ↦ %‖G‖] [#1 ↦ (%(‖G‖+1), gr1)] T2a) {✦} ([#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] T2b) ({✦} ∪ gr2) →
+  sem_qtp (G ++ [(.TTop, qf0, .self), ([#0 ↦ %‖G‖] T1b, [#0 ↦ %‖G‖] q1b, .var)])
     (gr2 ∪ [#0 ↦ %‖G‖] [#1 ↦ (%(‖G‖+1), gr1)] q2a) ([#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] q2b) →
-  gr1 \ {%‖G‖} ⊆ grf →
-  gr2 \ {%‖G‖, %(‖G‖+1)} ⊆ grf →
-  sem_stp G qf0 grf (.TFun T1a q1a T2a q2a) (.TFun T1b q1b T2b q2b) :=
+  gr1 ⊆ qf0 ∪ {%‖G‖} →
+  gr2 ⊆ qf0 ∪ {%‖G‖, %(‖G‖+1)} →
+  sem_stp G (.TFun T1a q1a T2a q2a) qf0 (.TFun T1b q1b T2b q2b) qf0 :=
 by
-  intros Cb Cqf0 Cgrf S1 Q1 S2 Q2 _ _; dsimp; introv WFE ST PQF VT1 VQ1; rename' ls => lsf
-  let grf' := vars_locs V (qf0 ∪ grf)
+  intros Cb Cqf0 Cgrf S1 Q1 S2 Q2 _ _; dsimp; introv WFE ST
+  split_ands; intro h; simp [h]; simp; introv PQF VT1 VQ1; rename' ls => lsf
+  let grf' := vars_locs V qf0
   have: lsf ∪ grf' ⊆ pnat ‖M‖ := by
     apply Set.union_subset; apply (valt_wf VT1).1; simp only [grf']
     trans; assumption; apply env_type1_store_wf WFE
   replace VT1 := by
     apply valt_grow (ls' := lsf ∪ grf') VT1; simp; assumption
   have WFE1 := by  -- extend by function
-    have: env_cell M V {%‖V‖} ‖V‖ .TTop (qf0 ∪ grf) .self v vtnone (lsf ∪ grf') := by
-      simp; split_ands; simp!; rw [←WFE.t2l]; apply Finset.union_subset
-      assumption; c_extend; simpa [val_type]; intro h1 h2; apply Set.union_subset
+    have: env_cell M V {%‖V‖} ‖V‖ .TTop qf0 .self v vtnone (lsf ∪ grf') := by
+      simp; split_ands; simp!; rwa [←WFE.t2l]
+      simpa [val_type]; intro h1 h2; apply Set.union_subset
       trans; apply VQ1 h1; simp; simp [grf']; simp [grf']
     apply envt1_extend_stub WFE _ _ _ this; exact ∅
     simp; simp [st_chain]; rw [WFE.v2l]
@@ -2048,119 +1418,104 @@ by
   rename_i VT1; introv CH ST' VX QX
   replace WFE1 := by  -- store change
     simp at WFE1; apply envt1_store_change (M' := M') WFE1; apply stchain_tighten CH
-    apply lls_mono; simp [WFE.t2l]
+    apply lls_mono; simp
   replace this: lsf ∪ grf' ⊆ pnat ‖M'‖ := by
     simp [st_chain] at CH; trans; swap; exact CH.2.1
     intro _ h; apply lls_z; exact h
   have Cgr1: closed_ql false 0 (‖G‖+1) gr1 := by
-    apply Finset.Subset.trans (s₂ := gr1 \ {%‖G‖} ∪ {%‖G‖}); simp
-    apply Finset.union_subset; trans; assumption; c_extend; simp
+    apply closedql_fr_tighten; assumption; simp [closed_ql]; trans; assumption
+    apply Finset.union_subset; trans; assumption; simp; simp
   -- apply the function
   simp only [WFE.t2l] at S1 Q1
-  have Cgrn: ∀⦃g V'⦄, g ⊆ grf → vars_locs (V ++ V') g ⊆ vars_locs V grf := by
-    introv h; rw [← vars_locs_shrink (q := grf) (V' := V')]; apply vars_locs_monotonic h
-    rw [← WFE.t2l]; exact Cgrf.hfvs
   let gr1' := vars_locs (V ++ [(vtnone, lsf ∪ grf')]) gr1
   have Hgr1': gr1' ⊆ lsf ∪ grf' := by
-    simp [gr1']; have: gr1 ⊆ gr1 \ {%‖V‖} ∪ {%‖V‖} := by simp [sets]
-    trans; apply vars_locs_monotonic; exact this
-    simp [-Finset.sdiff_union_self_eq_union]; apply Set.union_subset; trans
-    apply Cgrn; simpa [← WFE.t2l]; simp [grf', sets]; clear *-; tauto; simp
-  specialize S1 WFE1 ST' _ VX (by simp)
-  · simp [WFE.t2l]; simpa [gr1'] using Hgr1'
-  obtain ⟨gr1'', Hgr1'', VX'⟩ := S1; simp at Hgr1''
+    simp [gr1']; trans; apply vars_locs_monotonic; change _ ⊆ qf0 ∪ ?_; assumption
+    simp [WFE.t2l]; rw [vars_locs_shrink]; simp [grf', sets]; clear *-; tauto
+    rw [←WFE.t2l]; apply Cqf0.hfvs
+  simp at S1; specialize S1 WFE1 ST' _ VX
+  · simp; simpa [gr1'] using Hgr1'
+  obtain ⟨gr1'', Hgr1'', VX'⟩ := S1
   replace VX' := valt_grow (ls' := lsx ∪ gr1') VX' ?_ ?_  -- make it larger, for valt_substq
   rotate_left; gcongr; apply Set.union_subset; apply (valt_wf VX).1; trans; assumption'
   specialize VT1 CH ST' VX' _; trans ?_ ∪ gr1'; gcongr; assumption; simp [gr1']
   obtain Q1 | Q1 := Q1
   · intro _ h; simp [sets] at Q1; simp [Q1, subst]; clear *-; tauto
   · obtain ⟨Q1a, -, -, Q1b⟩ := Q1 WFE1
-    simp at Q1b; simp [subst] at Q1a; clear * - Q1a Q1b; simp [sets] at *
-    rintro _ ((H | H) | H); left; exact Q1b (.inr H); right; tauto; left; tauto
+    simp at Q1b; simp [subst] at Q1a; clear * - Q1a Q1b; aesop (add simp sets)
   -- extend by argument
   clear Q1 VX' Hgr1'' gr1''
   have WFE2 := by
     have: env_cell M' (V ++ [(vtnone, lsf ∪ grf')]) {%(‖V‖+1)} (‖V‖+1)
         ([#0 ↦ %‖V‖] T1b) ([#0 ↦ %‖V‖] q1b) .var vx vtnone lsx := by
-      simp; split_ands'; apply subst_tighten; c_extend; simp
-      apply subst_tighten; c_extend; simp [sets]
+      simp; split_ands'; c_subst; c_extend; c_subst; c_extend;
       intro h; simp [subst] at h; simpa [h] using QX
     apply envt1_extend_stub WFE1 _ _ _ this; exact {%‖V‖}
     simp; simp [st_chain]; apply lls_closed'; assumption'; simp [WFE.v2l]
   obtain ⟨S'', M'', vy, lsy, _, _, ST2, SE2, VY, QY⟩ := VT1
   replace WFE2 := by
     apply envt1_store_change (M' := M'') WFE2
-    apply stchain_tighten; assumption; apply lls_closed' ST'
-    simp [WFE.t2l, List.getElem_append_right]
+    apply stchain_tighten; assumption; apply lls_closed' ST'; simp
     apply Set.union_subset; assumption; apply (valt_wf VX).1
   -- convert valty, qualy
   simp only [WFE.t2l, List.append_assoc] at S2 Q2 WFE2; specialize Q2 WFE2
   have: vars_locs (V ++ [(vtnone, lsf ∪ grf')] ++ [(vtnone, lsx)]) gr1 = gr1' := by
     rw [vars_locs_shrink]; simp [← WFE.t2l]; exact Cgr1.hfvs
-  simp at this; specialize S2 WFE2 ST2 _ (v := vy) (ls := lsy) _ _
-  · simp [List.getElem_append_right]
-    have: gr2 ⊆ gr2 \ {%‖G‖, %(‖G‖+1)} ∪ {%‖G‖, %(‖G‖+1)} := by simp [Finset.insert_eq]
-    trans; apply vars_locs_monotonic; exact this
-    simp [-Finset.sdiff_union_self_eq_union, -Finset.union_insert]
-    apply Set.union_subset; trans; apply Cgrn; assumption
-    simp [grf', sets]; clear *-; tauto
-    simp [WFE.t2l, Finset.insert_eq, List.getElem_append_right]
+  simp at this S2; specialize S2 WFE2 ST2 _ (v := vy) (ls := lsy) _
+  · trans; apply vars_locs_monotonic; assumption
+    simp [Finset.insert_eq, WFE.t2l]; rw [vars_locs_shrink]
+    simp [grf', sets]; clear *-; tauto; rw [←WFE.t2l]; apply Cqf0.hfvs
   · simp; rw [←ty.subst_open_chain #1 %(‖V‖+1), ty.open_subst_comm, valt_subst]
-    convert VY; simp [List.getElem_append_right, this, val_type, vtnone]
+    convert VY; simp [this, val_type, vtnone]
     rfl; simp; simp!
     simp [closed_ql, sets, ←WFE.t2l]; apply closedql_extend Cgr1 <;> simp
     assumption; simp; simp; intro; c_free; simp!; simp; c_free;
-  · simp
   obtain ⟨gr2', Hgr2, VY'⟩ := S2; obtain ⟨Q2a, -, -, Q2b⟩ := Q2
   simp [subst] at Q2a; simp at Q2b Hgr2
-  rw [←ql.subst_chain #1 %(‖V‖+1), ql.subst_comm, vars_locs_open (vt := vtnone)] at Q2b
-  simp [List.getElem_append_right, this] at Q2b; rotate_left
+  rw [←ql.subst_chain #1 %(‖V‖+1), ql.subst_comm, vars_locs_subst (vt := vtnone)] at Q2b
+  simp [this] at Q2b; rotate_left
   simp; simp [closed_ql, sets, ←WFE.t2l]; apply closedql_extend Cgr1 <;> simp
   simp; simp; c_free; simp; c_free;
   -- finally, supply all the witnesses
   exists S'', M'', vy, lsy ∪ gr2'; split_ands'
-  · apply se_sub SE2; clear * - Hgr1'; simp [sets] at *; rintro _ (H | H | H)
-    tauto; tauto; specialize Hgr1' H; tauto
-  · trans ?_ ∪ ?_; gcongr <;> assumption
-    clear * - Q2a Q2b; simp [sets] at *; rintro _ ((H | H) | H)
-    specialize Q2b (.inr H); tauto; tauto; tauto
+  · apply se_sub SE2; clear * - Hgr1'; aesop (add simp sets)
+  · trans ?_ ∪ ?_; gcongr <;> assumption; clear * - Q2a Q2b; aesop (add simp sets)
 
 theorem sem_stp_tvar:
   G[x]? = some (Tx, qx, .tvar) →
-  sem_stp G q ∅ (.TVar (%x)) Tx :=
+  sem_stp G (.TVar (%x)) q Tx q :=
 by
-  intro h; dsimp; introv WFE ST C VT VQ; exists ∅; simp; simp [val_type] at VT
+  intro h; simp; introv WFE ST C VT VQ; exists ∅; simp; simp [val_type] at VT
   obtain ⟨_, vt, ⟨ls0, h1⟩, VT⟩ := VT; have := WFE.byV h1; simp [h] at this
-  obtain ⟨_, _, _, ⟨rfl, rfl, rfl⟩, _, -, -, -, VT1, -⟩ := this
-  apply VT1; rfl; assumption; apply VT; simp
+  obtain ⟨_, _, _, _, VT1, -⟩ := this
+  apply VT1; assumption; apply VT; simp
   simp [st_chain]; apply lls_closed'; assumption'
 
 theorem sem_stp_all:
   closed_ty 0 ‖G‖ (.TAll T1b q1b T2b q2b) →
   closed_ql true 0 ‖G‖ qf0 →
-  closed_ql false 0 ‖G‖ grf →
-  sem_stp (G ++ [(.TTop, qf0 ∪ grf, .self)]) {✦}
-     ∅  ([#0 ↦ %‖G‖] T1b) ([#0 ↦ %‖G‖] T1a) →
-  {#0, ✦} ⊆ q1a ∨ sem_qtp (G ++ [(.TTop, qf0 ∪ grf, .self)])
-        ([#0 ↦ %‖G‖] q1b) ([#0 ↦ %‖G‖] q1a) →
-  sem_stp (G ++ [(.TTop, qf0 ∪ grf, .self), ([#0 ↦ %‖G‖] T1b, [#0 ↦ %‖G‖] q1b, .tvar)]) {✦}
-     gr2  ([#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] T2a) ([#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] T2b) →
-  sem_qtp (G ++ [(.TTop, qf0 ∪ grf, .self), ([#0 ↦ %‖G‖] T1b, [#0 ↦ %‖G‖] q1b, .tvar)])
+  sem_stp (G ++ [(.TTop, qf0, .self)])
+    ([#0 ↦ %‖G‖] T1b) {✦} ([#0 ↦ %‖G‖] T1a) {✦} →
+  {#0, ✦} ⊆ q1a ∨ sem_qtp (G ++ [(.TTop, qf0, .self)])
+    ([#0 ↦ %‖G‖] q1b) ([#0 ↦ %‖G‖] q1a) →
+  sem_stp (G ++ [(.TTop, qf0, .self), ([#0 ↦ %‖G‖] T1b, [#0 ↦ %‖G‖] q1b, .tvar)])
+    ([#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] T2a) {✦} ([#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] T2b) ({✦} ∪ gr2) →
+  sem_qtp (G ++ [(.TTop, qf0, .self), ([#0 ↦ %‖G‖] T1b, [#0 ↦ %‖G‖] q1b, .tvar)])
     (gr2 ∪ [#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] q2a) ([#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] q2b) →
-  gr2 \ {%‖G‖, %(‖G‖+1)} ⊆ grf →
-  sem_stp G qf0 grf (.TAll T1a q1a T2a q2a) (.TAll T1b q1b T2b q2b) :=
+  gr2 ⊆ qf0 ∪ {%‖G‖, %(‖G‖+1)} →
+  sem_stp G (.TAll T1a q1a T2a q2a) qf0 (.TAll T1b q1b T2b q2b) qf0 :=
 by
-  intros Cb Cqf0 Cgrf S1 Q1 S2 Q2 _; dsimp; introv WFE ST PQF VT1 VQ1; rename' ls => lsf
-  let grf' := vars_locs V (qf0 ∪ grf)
+  intros Cb Cqf0 S1 Q1 S2 Q2 _; dsimp; introv WFE ST;
+  split_ands; intro h; simp [h]; simp; introv PQF VT1 VQ1; rename' ls => lsf
+  let grf' := vars_locs V qf0
   have: lsf ∪ grf' ⊆ pnat ‖M‖ := by
     apply Set.union_subset; apply (valt_wf VT1).1; simp only [grf']
     trans; assumption; apply env_type1_store_wf WFE
   replace VT1 := by
     apply valt_grow (ls' := lsf ∪ grf') VT1; simp; assumption
   have WFE1 := by  -- extend by function
-    have: env_cell M V {%‖V‖} ‖V‖ .TTop (qf0 ∪ grf) .self v vtnone (lsf ∪ grf') := by
-      simp; split_ands; simp!; rw [←WFE.t2l]; apply Finset.union_subset
-      assumption; c_extend; simpa [val_type]; intro h1 h2; apply Set.union_subset
+    have: env_cell M V {%‖V‖} ‖V‖ .TTop qf0 .self v vtnone (lsf ∪ grf') := by
+      simp; split_ands; simp!; rwa [←WFE.t2l]
+      simpa [val_type]; intro h1 h2; apply Set.union_subset
       trans; apply VQ1 h1; simp; simp [grf']; simp [grf']
     apply envt1_extend_stub WFE _ _ _ this; exact ∅
     simp; simp [st_chain]; rw [WFE.v2l]
@@ -2169,15 +1524,12 @@ by
   rename_i VT1; introv CH ST' VX VX' QX
   replace WFE1 := by  -- store change
     simp at WFE1; apply envt1_store_change (M' := M') WFE1; apply stchain_tighten CH
-    apply lls_mono; simp [WFE.t2l]
+    apply lls_mono; simp
   replace this: lsf ∪ grf' ⊆ pnat ‖M'‖ := by
     simp [st_chain] at CH; trans; swap; exact CH.2.1
     intro _ h; apply lls_z; exact h
   -- apply the function
   simp only [WFE.t2l] at S1 Q1
-  have Cgrn: ∀⦃g V'⦄, g ⊆ grf → vars_locs (V ++ V') g ⊆ vars_locs V grf := by
-    introv h; rw [← vars_locs_shrink (q := grf) (V' := V')]; apply vars_locs_monotonic h
-    rw [← WFE.t2l]; exact Cgrf.hfvs
   specialize VT1 (vt := vt) (lsx := lsx) CH ST' _ VX' _
   · introv ST VT; replace WFE1 := by
       apply envt1_store_change (M' := M); apply envt1_tighten (p' := ∅)
@@ -2186,41 +1538,30 @@ by
   · trans; exact QX; obtain Q1 | Q1 := Q1
     · intro _ h; simp [sets] at Q1; simp [Q1, subst]; clear *-; tauto
     · obtain ⟨Q1a, -, -, Q1b⟩ := Q1 WFE1
-      gcongr; simp [sets]; simp [subst] at Q1a
-      clear *- Q1a; tauto
+      gcongr; simp [sets]; simp [subst] at Q1a; clear *- Q1a; tauto
   -- extend by argument
-  clear Q1
   have WFE2 := by
     have: env_cell M' (V ++ [(vtnone, lsf ∪ grf')]) {%(‖V‖+1)} (‖V‖+1)
-        ([#0 ↦ %‖V‖] T1b) ([#0 ↦ %‖V‖] q1b) .tvar (.vbool false) vt lsx := by
-      simp; split_ands'; apply subst_tighten; c_extend; simp
-      apply subst_tighten; c_extend; simp [sets]
-      simpa [val_type]
-      intro h; simp [subst] at h; simpa [h] using QX
+        ([#0 ↦ %‖V‖] T1b) ([#0 ↦ %‖V‖] q1b) .tvar (.vnat 0) vt lsx := by
+      simp; split_ands'; c_subst; c_extend; c_subst; c_extend;
+      simpa [val_type]; intro h; simp [subst] at h; simpa [h] using QX
     apply envt1_extend_stub WFE1 _ _ _ this; exact {%‖V‖}
     simp; simp [st_chain]; apply lls_closed'; assumption'; simp [WFE.v2l]
   obtain ⟨S'', M'', vy, lsy, _, _, ST2, SE2, VY, QY⟩ := VT1
   replace WFE2 := by
     apply envt1_store_change (M' := M'') WFE2
     apply stchain_tighten; assumption; apply lls_closed' ST'
-    simp [WFE.t2l, List.getElem_append_right]
-    apply Set.union_subset; assumption'
+    simp; apply Set.union_subset; assumption'
   -- convert valty, qualy
   simp only [WFE.t2l, List.append_assoc] at S2 Q2 WFE2; specialize Q2 WFE2
-  simp at this; specialize S2 WFE2 ST2 _ (v := vy) (ls := lsy) _ _
-  · simp [List.getElem_append_right]
-    have: gr2 ⊆ gr2 \ {%‖G‖, %(‖G‖+1)} ∪ {%‖G‖, %(‖G‖+1)} := by simp [Finset.insert_eq]
-    trans; apply vars_locs_monotonic; exact this
-    simp [-Finset.sdiff_union_self_eq_union, -Finset.union_insert]
-    apply Set.union_subset; trans; apply Cgrn; assumption
-    simp [grf', sets]; clear *-; tauto
-    simp [WFE.t2l, Finset.insert_eq, List.getElem_append_right]
+  simp at this S2; specialize S2 WFE2 ST2 _ (v := vy) (ls := lsy) _
+  · trans; apply vars_locs_monotonic; assumption
+    simp [Finset.insert_eq, WFE.t2l]
+    rw [vars_locs_shrink]; simp [grf', sets]; clear *-; tauto;
+    rw [←WFE.t2l]; apply Cqf0.hfvs
   · simpa
-  · simp
   obtain ⟨gr2', Hgr2, VY'⟩ := S2; obtain ⟨Q2a, -, -, Q2b⟩ := Q2
   simp [subst] at Q2a; simp at Q2b Hgr2
   -- finally, supply all the witnesses
   exists S'', M'', vy, lsy ∪ gr2'; split_ands'
-  · trans ?_ ∪ ?_; gcongr <;> assumption
-    clear * - Q2a Q2b; simp [sets] at *; rintro _ ((H | H) | H)
-    specialize Q2b (.inr H); tauto; tauto; tauto
+  trans ?_ ∪ ?_; gcongr <;> assumption; clear * - Q2a Q2b; aesop (add simp sets)

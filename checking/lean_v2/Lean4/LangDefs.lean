@@ -80,19 +80,26 @@ instance bvsShift: HAdd ql ℕ ql where
 
 inductive ty : Type where
 | TTop  : ty
-| TBool  : ty
-| TRef   : ty → ql → ty
+| TUnit  : ty
+| TNat   : ty
+| TRef2  : ty → ql → ty → ql → ty
 | TFun   : ty → ql → ty → ql → ty
 | TVar   : id → ty
 | TAll   : ty → ql → ty → ql → ty
+| TProd  : ty → ql → ty → ql → ty
+| TList  : ty → ty
 deriving DecidableEq
+
+abbrev ty.TRef1 T q := ty.TRef2 T q T q
 
 def ty.unfoldable (t: ty) :=
   match t with
-  | .TTop | .TBool | .TRef _ _ | .TFun _ _ _ _ | .TVar _ | .TAll _ _ _ _ => True
+  | .TTop | .TUnit | .TRef2 _ _ _ _ | .TFun _ _ _ _ | .TVar _ | .TAll _ _ _ _
+  | .TNat | .TProd _ _ _ _ | .TList _ => True
 
 attribute [simp] ty.unfoldable.eq_1 ty.unfoldable.eq_2 ty.unfoldable.eq_3
 attribute [simp] ty.unfoldable.eq_4 ty.unfoldable.eq_5 ty.unfoldable.eq_6
+attribute [simp] ty.unfoldable.eq_7 ty.unfoldable.eq_8 ty.unfoldable.eq_9
 
 inductive occ_flag where
 | none | no_covariant | no_contravariant | noneq
@@ -114,8 +121,9 @@ attribute [simp] occ_flag.tighten.eq_1 occ_flag.tighten.eq_2
 
 def occurs (f: occ_flag) (T: ty) (x: id): Prop :=
   match T with
-  | .TRef T q =>
-    occurs f.tighten T x ∧ x+1 ∉ q
+  | .TRef2 T1 q1 T2 q2 =>
+    occurs f.flip T1 (x+1) ∧ (f = .no_covariant ∨ x+1 ∉ q1) ∧
+    occurs f T2 (x+1) ∧ (f = .no_contravariant ∨ x+1 ∉ q2)
   | .TFun T1 q1 T2 q2 =>
     occurs f.flip T1 (x+1) ∧ (f = .no_covariant ∨ x+1 ∉ q1) ∧
     occurs f T2 (x+2) ∧ (f = .no_contravariant ∨ x+2 ∉ q2)
@@ -124,13 +132,22 @@ def occurs (f: occ_flag) (T: ty) (x: id): Prop :=
   | .TAll T1 q1 T2 q2 =>
     occurs f.flip T1 (x+1) ∧ (f = .no_covariant ∨ x+1 ∉ q1) ∧
     occurs f T2 (x+2) ∧ (f = .no_contravariant ∨ x+2 ∉ q2)
-  | .TTop | .TBool => True
+  | .TProd T1 q1 T2 q2 =>
+    occurs f T1 (x+1) ∧ (f = .no_contravariant ∨ x+1 ∉ q1) ∧
+    occurs f T2 (x+1) ∧ (f = .no_contravariant ∨ x+1 ∉ q2)
+  | .TList T => occurs f T (x+1)
+  | .TTop | .TUnit | .TNat => True
 
 def closed_ty (bv fv: Nat): ty → Prop
-  | .TTop | .TBool => True
-  | .TRef T q =>
-    closed_ty bv fv T ∧
-    closed_ql false (bv+1) fv q
+  | .TTop | .TUnit | .TNat => True
+  | .TRef2 T1 q1 T2 q2 =>
+    closed_ty (bv+1) fv T1 ∧
+    closed_ty (bv+1) fv T2 ∧
+    closed_ql false (bv+1) fv q1 ∧
+    closed_ql false (bv+1) fv q2 ∧
+    #0 ∉ q1 ∧
+    occurs .no_covariant T1 #0 ∧
+    occurs .no_contravariant T2 #0
   | .TFun T1 q1 T2 q2 =>
     closed_ty (bv+1) fv T1 ∧
     closed_ty (bv+2) fv T2 ∧
@@ -148,11 +165,23 @@ def closed_ty (bv fv: Nat): ty → Prop
     (#0 ∈ q1 → ✦ ∈ q1) ∧
     occurs .no_covariant T1 #0 ∧
     occurs .no_contravariant T2 #0
+  | .TProd T1 q1 T2 q2 =>
+    closed_ty (bv+1) fv T1 ∧
+    closed_ty (bv+1) fv T2 ∧
+    closed_ql false (bv+1) fv q1 ∧
+    closed_ql false (bv+1) fv q2 ∧
+    occurs .no_contravariant T1 #0 ∧
+    occurs .no_contravariant T2 #0
+  | .TList T =>
+    closed_ty (bv+1) fv T ∧
+    occurs .no_contravariant T #0
 
 @[simp]
 def ty.open (x x': id) (t: ty): ty :=
   match t with
-  | .TRef T q => .TRef (ty.open x x' T) ([x+1 ↦ x'+1] q)
+  | .TRef2 T1 q1 T2 q2 =>
+    .TRef2 (ty.open (x+1) (x'+1) T1) ([x+1 ↦ x'+1] q1)
+           (ty.open (x+1) (x'+1) T2) ([x+1 ↦ x'+1] q2)
   | .TFun T1 q1 T2 q2 =>
     .TFun (ty.open (x+1) (x'+1) T1) ([x+1 ↦ x'+1] q1)
           (ty.open (x+2) (x'+2) T2) ([x+2 ↦ x'+2] q2)
@@ -160,7 +189,11 @@ def ty.open (x x': id) (t: ty): ty :=
   | .TAll T1 q1 T2 q2 =>
     .TAll (ty.open (x+1) (x'+1) T1) ([x+1 ↦ x'+1] q1)
           (ty.open (x+2) (x'+2) T2) ([x+2 ↦ x'+2] q2)
-  | .TTop | .TBool => t
+  | .TProd T1 q1 T2 q2 =>
+    .TProd (ty.open (x+1) (x'+1) T1) ([x+1 ↦ x'+1] q1)
+           (ty.open (x+1) (x'+1) T2) ([x+1 ↦ x'+1] q2)
+  | .TList T => .TList (ty.open (x+1) (x'+1) T)
+  | .TTop | .TUnit | .TNat => t
 
 instance: Subst ty id where
   subst := ty.open
@@ -186,15 +219,21 @@ def ty.TAll' (n: ℕ) T1 q1 T2 q2 :=
 @[simp]
 def ty.subst' (x: id) (xt: ty) (xs: ql) (t: ty): ty :=
   match t with
-  | .TRef T q => .TRef (ty.subst' x xt xs T) ([x+1 ↦ xs] q)
+  | .TRef2 T1 q1 T2 q2 =>
+    .TRef2 (ty.subst' (x+1) xt xs T1) ([x+1 ↦ xs] q1)
+           (ty.subst' (x+1) xt xs T2) ([x+1 ↦ xs] q2)
   | .TFun T1 q1 T2 q2 =>
     .TFun (ty.subst' (x+1) xt xs T1) ([x+1 ↦ xs] q1)
           (ty.subst' (x+2) xt xs T2) ([x+2 ↦ xs] q2)
   | .TAll T1 q1 T2 q2 =>
     .TAll (ty.subst' (x+1) xt xs T1) ([x+1 ↦ xs] q1)
           (ty.subst' (x+2) xt xs T2) ([x+2 ↦ xs] q2)
+  | .TProd T1 q1 T2 q2 =>
+    .TProd (ty.subst' (x+1) xt xs T1) ([x+1 ↦ xs] q1)
+           (ty.subst' (x+1) xt xs T2) ([x+1 ↦ xs] q2)
   | .TVar a => if x = a then xt else .TVar a
-  | .TTop | .TBool => t
+  | .TList T => .TList (ty.subst' (x+1) xt xs T)
+  | .TTop | .TUnit | .TNat => t
 
 instance: Subst ty (ty × ql) where
   subst x x' t := ty.subst' x x'.1 x'.2 t
@@ -217,13 +256,18 @@ instance: Subst ty (id × ql) where
 
 def ty.splice (t: ty) (n δ: ℕ): ty :=
   match t with
-  | .TRef T q => .TRef (T.splice n δ) (q.splice n δ)
+  | .TRef2 T1 q1 T2 q2 =>
+    .TRef2 (T1.splice n δ) (q1.splice n δ) (T2.splice n δ) (q2.splice n δ)
   | .TFun T1 q1 T2 q2 =>
     .TFun (T1.splice n δ) (q1.splice n δ) (T2.splice n δ) (q2.splice n δ)
   | .TVar x => .TVar (x.splice n δ)
   | .TAll T1 q1 T2 q2 =>
     .TAll (T1.splice n δ) (q1.splice n δ) (T2.splice n δ) (q2.splice n δ)
-  | _ => t
+  | .TProd T1 q1 T2 q2 =>
+    .TProd (T1.splice n δ) (q1.splice n δ) (T2.splice n δ) (q2.splice n δ)
+  | .TList T =>
+    .TList (T.splice n δ)
+  | .TUnit | .TTop | .TNat => t
 
 -- typing environment
 
@@ -250,32 +294,86 @@ def ctx_grow (G G': tenv) (growables: gfset): Prop :=
     i ∈ growables ∧ ∃ T q q', q ⊆ q' ∧ closed_ql (✦ ∈ q) 0 i q' ∧
       G[i]? = some (T, q, .self) ∧ G'[i]? = some (T, q', .self))
 
+-- measurement
+
+def ty_size (t: ty): ℕ :=
+  match t with
+  | .TRef2 T1 _ T2 _ => 1 + ty_size T1 + ty_size T2
+  | .TFun T1 _ T2 _ => 1 + ty_size T1 + ty_size T2
+  | .TAll T1 _ T2 _ => 1 + ty_size T1 + ty_size T2
+  | .TProd T1 _ T2 _ => 1 + ty_size T1 + ty_size T2
+  | .TList T => 1 + ty_size T
+  | .TTop | .TUnit | .TVar _ | .TNat => 1
+
+@[simp]
+lemma open_preserves_tysize {x x': id} {T: ty}:
+  ty_size [x ↦ x'] T = ty_size T :=
+by
+  induction T generalizing x x' <;> aesop (add simp ty_size)
+
+def sub_size' (G: List ℕ) (T: ty): ℕ :=
+  match T with
+  | .TRef2 T1 _ T2 _ =>
+    1 + sub_size' (G ++ [0]) [#0 ↦ %‖G‖] T1
+      + sub_size' (G ++ [0]) [#0 ↦ %‖G‖] T2
+  | .TFun T1 _ T2 _ =>
+    1 + sub_size' (G ++ [0]) [#0 ↦ %‖G‖] T1
+      + sub_size' (G ++ [0, 0]) [#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] T2
+  | .TAll T1 _ T2 _ =>
+    let n1 := sub_size' (G ++ [0]) [#0 ↦ %‖G‖] T1
+    1 + sub_size' (G ++ [0, n1]) [#0 ↦ %‖G‖] [#1 ↦ %(‖G‖+1)] T2
+  | .TVar (%x) =>
+    1 + G.getD x 0
+  | .TProd T1 _ T2 _ =>
+    1 + sub_size' (G ++ [0]) [#0 ↦ %‖G‖] T1
+      + sub_size' (G ++ [0]) [#0 ↦ %‖G‖] T2
+  | .TList T =>
+    1 + sub_size' (G ++ [0]) [#0 ↦ %‖G‖] T
+  | .TVar _ | .TUnit | .TTop | .TNat => 1
+termination_by ty_size T
+decreasing_by all_goals simp! <;> omega
+
+def tenv.sub_sizes (G: tenv): List ℕ :=
+  G.foldl (fun res (T, _, bn) => res ++ [if bn = .tvar then sub_size' res T else 0]) []
+
+def sub_size (G: tenv) (T: ty): ℕ :=
+  sub_size' G.sub_sizes T
+
 -- term language
 
 inductive tm: Type where
-| ttrue
-| tfalse
+| tunit
+| tnat (n: ℕ)
+| tadd (t1 t2: tm)
+| tmul (t1 t2: tm)
 | tvar (x: ℕ)
 | tref (t: tm)
 | tget (t: tm)
 | tput (tr tx: tm)
 | tapp (tf tx: tm)
-| tabs (t: tm)
-| tabsa (T: ty) (q: ql) (t: tm)
+| tabs (tq: Option (ty × ql)) (t: tm)
 | ttapp (tf: tm) (T: ty) (q: ql)
-| ttabs (T: ty) (q: ql) (t: tm)
+| ttabs (tq: Option (ty × ql)) (t: tm)
 | tanno (t: tm) (T: ty) (q: ql)
+| tpair (fst snd: tm)
+| tfst (p: tm)
+| tsnd (p: tm)
+| tnil
+| tcons (hd tl: tm)
+| tfold (lst init op: tm)
 
-@[match_pattern] def tm.tlet t1 t2 := (tm.tabs t2).tapp t1
+@[match_pattern] def tm.tlet t1 t2 := (tm.tabs none t2).tapp t1
 @[match_pattern] def tm.tlet' t1 T q t2 := tm.tlet (tm.tanno t1 T q) t2
 
 -- semantics
 
 inductive vl: Type where
-| vbool (b: Bool)
+| vnat (n: ℕ)
 | vref (l: Nat)
 | vabs (H: List vl) (t: tm)
 | vtabs (H: List vl) (t: tm)
+| vpair (fst snd: vl)
+| vlist (lst: List vl)
 
 abbrev venv := List vl
 abbrev stor := List vl
@@ -283,8 +381,20 @@ abbrev stor := List vl
 def teval (n: Nat) (M: stor) (env: venv) (t: tm): Except String (Nat × stor × vl) := do
   match n, t with
   | 0, _ => throw "timeout"
-  | _ + 1, .ttrue => return (1, M, .vbool true)
-  | _ + 1, .tfalse => return (1, M, .vbool false)
+  | _ + 1, .tunit => return (1, M, .vnat 0)
+  | _ + 1, .tnat n => return (1, M, .vnat n)
+  | n + 1, .tadd t1 t2 =>
+    let (d1, M1, v1) ← teval n M env t1
+    let (d2, M2, v2) ← teval n M1 env t2
+    match v1, v2 with
+    | .vnat n1, .vnat n2 => return (1+d1+d2, M2, .vnat (n1 + n2))
+    | _, _ => throw "error"
+  | n + 1, .tmul t1 t2 =>
+    let (d1, M1, v1) ← teval n M env t1
+    let (d2, M2, v2) ← teval n M1 env t2
+    match v1, v2 with
+    | .vnat n1, .vnat n2 => return (1+d1+d2, M2, .vnat (n1 * n2))
+    | _, _ => throw "error"
   | _ + 1, .tvar x =>
     match env[x]? with
     | some v => return (1, M, v)
@@ -306,11 +416,10 @@ def teval (n: Nat) (M: stor) (env: venv) (t: tm): Except String (Nat × stor × 
     | .vref x =>
       let (dx, M'', vx) ← teval n M' env ex
       match M''[x]? with
-      | some _ => return (1+dr+dx, M''.set x vx, .vbool true)
+      | some _ => return (1+dr+dx, M''.set x vx, .vnat 0)
       | _ => throw "error"
     | _ => throw "error"
-  | _ + 1, .tabs y => return (1, M, .vabs env y)
-  | _ + 1, .tabsa _ _ y => return (1, M, .vabs env y)
+  | _ + 1, .tabs _ y => return (1, M, .vabs env y)
   | n + 1, .tapp ef ex =>
     let (df, M', vf) ← teval n M env ef
     match vf with
@@ -319,14 +428,48 @@ def teval (n: Nat) (M: stor) (env: venv) (t: tm): Except String (Nat × stor × 
       let (dy, M''', ry) ← teval n M'' (env2 ++ [.vabs env2 ey, vx]) ey
       return (1+df+dx+dy, M''', ry)
     | _ => throw "error"
-  | _ + 1, .ttabs _ _ y => return (1, M, .vtabs env y)
+  | _ + 1, .ttabs _ y => return (1, M, .vtabs env y)
   | n + 1, .ttapp ef _ _ =>
     let (df, M', vf) ← teval n M env ef
     match vf with
     | vf@(.vtabs env2 ey) =>
-      let (dy, M'', ry) ← teval n M' (env2 ++ [vf, .vbool false]) ey
+      let (dy, M'', ry) ← teval n M' (env2 ++ [vf, .vnat 0]) ey
       return (1+df+dy, M'', ry)
     | _ => throw "error"
   | n + 1, .tanno t _ _ =>
     let (d, M', vf) ← teval n M env t
     return (1+d, M', vf)
+  | n + 1, .tpair t1 t2 =>
+    let (d1, M1, v1) ← teval n M env t1
+    let (d2, M2, v2) ← teval n M1 env t2
+    return (1+d1+d2, M2, .vpair v1 v2)
+  | n + 1, .tfst p =>
+    let (dp, M', vp) ← teval n M env p
+    match vp with
+    | .vpair v1 _ => return (1+dp, M', v1)
+    | _ => throw "error"
+  | n + 1, .tsnd p =>
+    let (dp, M', vp) ← teval n M env p
+    match vp with
+    | .vpair _ v2 => return (1+dp, M', v2)
+    | _ => throw "error"
+  | _ + 1, .tnil =>
+    return (1, M, .vlist [])
+  | n + 1, .tcons t1 t2 =>
+    let (d1, M', v1) ← teval n M env t1
+    let (d2, M'', v2) ← teval n M' env t2
+    match v2 with
+    | .vlist tl => return (1+d1+d2, M'', .vlist (v1::tl))
+    | _ => throw "error"
+  | n + 1, .tfold tl t0 t1 =>
+    let (dl, M', vl) ← teval n M env tl
+    let (d0, M0, v0) ← teval n M' env t0
+    match vl with
+    | .vlist vl =>
+      vl.foldr
+        (fun v1 ev0 => do
+          let (d0, M0, v0) ← ev0
+          let (d1, M1, v1) ← teval n M0 (env++[v1, v0]) t1
+          return (1+d0+d1, M1, v1))
+        (.ok (1+dl+d0, M0, v0))
+    | _ => throw "error"

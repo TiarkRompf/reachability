@@ -4,4 +4,11 @@ tactics.v
 env.v
 qualifiers.v
 
-stlc_refb_effb_ability_purity.v
+stlc_tae.v
+stlc_tae_ctx.v
+stlc_ability.v
+stlc_effects.v
+example.v
+stlc_tae_list.v
+stlc_tae_list_example.v
+

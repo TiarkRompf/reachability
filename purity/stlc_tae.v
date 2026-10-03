@@ -1,18 +1,13 @@
+(*******************************************************************************
+* Coq mechanization of the simply typed calculus with first-order mutable store (the λ$_{ae}$-calculus).
+* - Syntactic definitions
+* - Semantic definitions
+* - Metatheory
+*******************************************************************************)
+
+
 (* Full safety for STLC *)
 
-(*
-
-An LR-based termination and semantic soundness proof for STLC.
-
-Add first-order mutable references (restricted to TBool)
-
-Binary logical relation with contextual equivalence.
-
-Add simple yes/no effect tracking, prove store invariance.
-
-Prove beta equivalence for pure function arguments.
-
-*)
 
 Require Import Coq.Lists.List.
 Require Import Psatz.
@@ -50,7 +45,7 @@ Definition pnot p1 (x:nat) := ~ p1 x.                               (* complemen
 
 Definition pdiff p1 p2 (x:nat) := p1 x /\ ~ p2 x.                   (* difference *)
 
-Definition pnat n := fun x' =>  x' < n.                             (* numeric bound *)
+Definition pnat n := fun x' =>  x' < n.      (* numeric bound *)
 
 Definition pdom {X} (H: list X) := fun x' =>  x' < (length H).      (* domain of a list *)
 
@@ -110,6 +105,32 @@ Definition bsub b b' := b = true -> b' = true.
 Definition env_cap (G:tenv) p a := forall x T1 fr1 a1,
     indexr x G = Some (T1, fr1, a1) -> p x = true -> bsub (fr1||a1) a.
 
+Inductive stp: ty -> ty -> Prop := 
+| s_bool : 
+  stp TBool TBool 
+| s_ref: 
+  stp TRef TRef
+| s_fun: forall T1 fr1 a1 T2 fr2 a2 e2 T3 fr3 a3 T4 fr4 a4 e4, 
+   stp T3 T1 ->
+   stp T2 T4 ->
+   bsub a3 a1 ->
+   bsub fr3 fr1 ->
+   bsub a2 a4 ->
+   bsub fr2 fr4 ->
+   bsub e2 e4 ->
+   stp (TFun T1 fr1 a1 T2 fr2 a2 e2) (TFun T3 fr3 a3 T4 fr4 a4 e4)
+.
+
+Lemma stp_id: forall T,
+  stp T T.
+Proof.
+  intros. induction T.
+  eapply s_bool.
+  eapply s_ref. 
+  eapply s_fun; auto. 
+  all: unfold bsub; auto.
+Qed.
+
 (*
 G |- t: T p fr a e
 *)
@@ -157,9 +178,36 @@ Inductive has_type : tenv -> tm -> ty -> ql -> bool -> bool -> bool -> Prop :=
 | t_sub_eff: forall env t T p fr a e,
     has_type env t T p fr a e ->
     has_type env t T p fr a true
+| t_sub_stp: forall env t T1 p fr1 a1 e1 T2 fr2 a2 e2,
+    has_type env t T1 p fr1 a1 e1 ->
+    stp T1 T2 ->
+    bsub fr1 fr2 ->
+    bsub a1 a2 ->
+    bsub e1 e2 ->
+    has_type env t T2 p fr2 a2 e2
 .
 
-
+Lemma ty_abs_app: forall G T1 T2 t1 t2 p1 p2 fr1 fr2 af a1 a2 e1 e2,
+  has_type G t1 T1 p1 fr1 a1 e1 ->
+  has_type ((T1, fr1, a1)::G) t2 T2 p2 fr2 a2 e2 ->
+  env_cap G (qdiff p2 (qone (length G))) af ->
+  has_type G (tapp (tabs t2) t1) T2
+    (qor (qdiff p2 (qone (length G))) p1)
+    ((fr1 && a2) || fr2)
+    ((af||a1)&&a2)
+    (e1 || (af||a1)&&e2).
+Proof.
+  intros.
+  eapply t_app with (f := tabs t2) (t := t1)
+                   (p1 := qdiff p2 (qone (length G))) (p2 := p1)
+                   (frf := false)(ef := false) in H as A.
+  2:{ eapply t_abs. exact H0. auto. eauto. }
+  simpl in A. 
+  eapply t_sub_stp. eauto. eapply stp_id. 
+  all: unfold bsub in *. intuition. 
+  destruct e2, a2, af, a1; simpl ; intuition.
+  destruct e1, e2, a2, af, a1; simpl in *; intuition.
+Qed.
 
 Lemma indexr_map: forall {A B} (G: list A) (f: A -> B) x a,
     indexr x G = Some a ->
@@ -296,6 +344,7 @@ Fixpoint val_locs_fix (v: vl) (l: nat): bool :=
   | vbool  _ => false
   | vref x   => x =? l
   | vabs H t  =>
+      (* alternative: use indexr x, for x < length H *)
       let fix vars_locs_fix (H: list vl) (q: ql) :=
         match H with
         | v :: H => (q (length H) && val_locs_fix v l) || vars_locs_fix H q
@@ -456,6 +505,7 @@ Fixpoint val_type M v1 v2 T (u: Prop) (ls1 ls2: ql): Prop :=
       False
   end.
 
+
 Definition exp_type2 v1 v2 uv ls1 ls2 S1 S2 M H1 H2 V1 V2 t1 t2 S1' S2' M' T u p1 p2 fr a e :=
     st_chain M M' /\
     stty_wellformed M' /\
@@ -467,7 +517,7 @@ Definition exp_type2 v1 v2 uv ls1 ls2 S1 S2 M H1 H2 V1 V2 t1 t2 S1' S2' M' T u p
       (por p1 (pdiff (pdom S1') (pdom S1)))
       (por p2 (pdiff (pdom S2') (pdom S2))) /\
     val_type M' v1 v2 T (u=true) ls1 ls2 /\
-    u = (negb a || uv) /\ 
+    u = (negb a || uv) /\ (* top-level: uv = true --> use, false --> mention *)
     True /\
     (u = false -> psub (plift ls1) pempty) /\
     (u = false -> psub (plift ls2) pempty) /\
@@ -509,7 +559,7 @@ Definition env_type M (H1 H2: venv) (V1 V2: lenv) (G: tenv) (u0: bool) (p: pl) :
   length H2 = length G /\
   length V1 = length G /\
   length V2 = length G /\
-  True /\ 
+  True /\ (* length W = length G /\ *)
   forall x T fr a,
     indexr x G = Some (T,fr,a) ->
     exists v1 v2 u ls1 ls2,
@@ -517,11 +567,12 @@ Definition env_type M (H1 H2: venv) (V1 V2: lenv) (G: tenv) (u0: bool) (p: pl) :
       indexr x H2 = Some v2 /\
       ((fr||a = false \/ u0=true) -> indexr x V1 = Some ls1) /\
       ((fr||a = false \/ u0=true) -> indexr x V2 = Some ls2) /\
-      True /\ 
+      True /\ (* indexr x W = Some u /\ *)
       (u = negb(fr||a) || u0) /\
       (p x -> val_type M v1 v2 T (u = true) ls1 ls2) /\
       ((fr||a = false \/ u0 = false) -> psub (plift ls1) pempty) /\
       ((fr||a = false \/ u0 = false) -> psub (plift ls2) pempty).
+
 
 
 #[export] Hint Constructors ty: core.
@@ -613,6 +664,12 @@ Proof.
   intros. eapply functional_extensionality.
   intros. eapply propositional_extensionality.
   destruct c; intuition.
+Qed.
+
+Lemma pif_false: forall p,
+  pif false p = pempty.
+Proof.
+  intros. eapply functional_extensionality. intros. simpl. auto.
 Qed.
 
 Lemma plift_diff: forall a b,
@@ -707,6 +764,31 @@ Proof.
   unfoldq. intuition.
 Qed.
 
+Lemma pdiff_empty_r: forall (p: pl),
+    pdiff p pempty = p.
+Proof.
+  intros. eapply functional_extensionality.
+  intros. eapply propositional_extensionality.
+  unfoldq. intuition. 
+Qed.
+
+Lemma por_comm: forall (p1 p2: pl),
+    (por p1 p2) = (por p2 p1).
+Proof.
+  intros. eapply functional_extensionality.
+  intros. eapply propositional_extensionality.
+  unfoldq. intuition. 
+Qed.
+
+Lemma por_same: forall (p1: pl),
+    (por p1 p1) = p1.
+Proof.
+  intros. eapply functional_extensionality.
+  intros. eapply propositional_extensionality.
+  unfoldq. intuition. 
+Qed.
+
+
 Lemma plift_vars_locs: forall V q,
     plift (vars_locs_fix V q) = vars_locs V (plift q).
 Proof.
@@ -795,7 +877,7 @@ Qed.
 
 Lemma exp_locs_var: forall H x v1,
     indexr x H = Some v1 ->
-    psub (plift v1) (exp_locs H (tvar x)).
+    psub ((*val_locs*) plift v1) (exp_locs H (tvar x)).
 Proof.
  intros. unfold exp_locs, psub, por. simpl. 
  exists x. split. rewrite plift_one. intuition. 
@@ -903,6 +985,83 @@ Proof.
     unfoldq. intuition. eapply IHhas_type in H2.
     simpl in H2. lia. 
   - rewrite plift_or. unfoldq. intuition.
+Qed.
+
+Lemma envc_tighten: forall G p p' a,
+    env_cap G p a ->
+    psub (plift p') (plift p) ->
+    env_cap G p' a.
+Proof.
+  intros. intros ??????.
+  eapply H. eauto. rewrite H0. eauto. eauto. 
+Qed.
+
+Lemma hast_strengthen: forall G T t1 p fr a e af,
+  has_type G t1 T p fr a e ->
+  env_cap G p af ->
+  has_type G t1 T p fr (a&&af) (e&&af).
+Proof.
+  intros. revert af H0. induction H; intros.
+  - eauto.
+  - eauto.
+  - simpl. eapply H0 in H as H'.
+    replace ((fr||a)&&af) with (fr||a). 
+    eapply t_var. eauto. unfold bsub in *. destruct (fr||a). rewrite H'. eauto.
+    unfold qone. bdestruct (x =? x). eauto. eauto. eauto. eauto.
+  - simpl. eapply t_ref. eauto.
+  - simpl. replace ((e || a) && af) with (e && af || a && af).
+    eapply t_get. eauto. 
+    destruct e,a,af; eauto.
+  - simpl. replace ((e1 || e2 || a1) && af) with (e1&&af || e2&&af || a1&&af).
+    eapply t_put.
+    eapply IHhas_type1. eapply envc_tighten. eauto. rewrite plift_or. unfoldq. intuition.
+    eapply IHhas_type2. eapply envc_tighten. eauto. rewrite plift_or. unfoldq. intuition. 
+    destruct e1,e2,a1,af; eauto.
+  - simpl. specialize t_app. intros.
+    specialize H2 with (af:=af&&af0).
+    specialize H2 with (ef:=ef&&af0).
+    specialize H2 with (a1:=a1&&af0).
+    specialize H2 with (e1:=e1&&af0).
+    assert (has_type env f (TFun T1 fr1 (a1&&af0) T2 fr2 a2 e2) p1 frf
+              (af && af0) (ef && af0)) as HX. {
+      eapply t_sub_stp. eapply IHhas_type1.
+      eapply envc_tighten. eauto. rewrite plift_or. unfoldq. intuition.
+      eapply s_fun. 1,2: apply stp_id. all: unfold bsub in *; auto.
+      destruct a1; eauto. 
+    }
+    eapply H2 in HX as HXX.
+    2: { destruct af0. eapply IHhas_type2. 
+         eapply envc_tighten. eauto. rewrite plift_or. unfoldq. intuition. 
+         eapply IHhas_type2. 
+         eapply envc_tighten. eauto. rewrite plift_or. unfoldq. intuition. }
+    replace ((af || a1) && a2 && af0) with ((af && af0 || a1 && af0) && a2).
+    2: destruct af0,a1,a2,af; simpl; eauto.
+    replace ((e1 || ef || (af || a1) && e2) && af0) with (e1 && af0 || ef && af0 || (af && af0 || a1 && af0) && e2).
+    2: destruct e1,e2,ef,af0,a1,a2,af; simpl; eauto.
+    eapply HXX.
+  - assert (env_cap env pf (af && af0)) as E12. intros ??????.
+    eapply H1 in H4 as E1; eauto.
+    eapply H2 in H4 as E2; eauto.
+    unfold bsub in *. intuition. 
+    eapply t_abs in H. 2: eauto. 2: eapply E12.
+    replace ((e2 || a2) && (af && af0)) with ((e2 || a2) && af && af0) in H.
+    2: destruct e2,a2,af0,af; simpl; eauto.
+    simpl. eauto.
+  - simpl. eapply t_not. eauto.
+  - simpl. replace ((e1 || e2) && af) with (e1&&af || e2&&af).
+    eapply t_bin.
+    eapply IHhas_type1. eapply envc_tighten. eauto. rewrite plift_or. unfoldq. intuition.
+    eapply IHhas_type2. eapply envc_tighten. eauto. rewrite plift_or. unfoldq. intuition. 
+    destruct e1,e2,a1,af; eauto.
+  - eauto.
+  - destruct af. eapply t_sub_cap. eauto. eapply IHhas_type in H0.
+    destruct a; eauto. 
+  - destruct af. eapply t_sub_eff. eauto. eapply IHhas_type in H0.
+    destruct e; eauto.
+  - destruct af.  eapply t_sub_stp; eauto.
+    all: unfold bsub in *. destruct a2; simpl; auto. destruct e2; simpl; auto.
+    eapply IHhas_type in H4. eapply t_sub_stp;eauto.
+    all: unfold bsub. destruct a1; intuition. destruct e1; intuition.
 Qed.
 
 Definition env_type0 (H1 H2: lenv) (G: tenv) (p: pl) :=
@@ -1027,6 +1186,20 @@ Proof.
   intros. inversion H. 
 Qed.
 
+
+Lemma envt_tighten: forall M H1 H2 V1 V2 G uw p p',
+    env_type M H1 H2 V1 V2 G uw p ->
+    psub p' p ->
+    env_type M H1 H2 V1 V2 G uw p'.
+Proof.
+  intros. destruct H as (?&?&?&?&?&?).
+  split. 2: split. 3: split. 4: split. 5: split. 
+  eauto. eauto. eauto. eauto. eauto.
+  intros. edestruct H7 as (?&?&?&?&?&?&?&?&?&?&?&?&?&?); eauto.
+  eexists _,_,_,_,_. intuition.
+  eauto. eauto. eauto. eauto. eauto. eauto. subst. eauto. 
+  eauto. eauto. eauto. eauto.
+Qed.
 
 Lemma envt_extend: forall M H1 H2 V1 V2 G v1 v2 T1 u u0 ls1 ls2 fr1 a1 p,
     env_type M H1 H2 V1 V2 G u0 p ->
@@ -1267,7 +1440,7 @@ Proof.
   - simpl. intros.
     destruct (H S1' S2' M'0 p1 p2 vx1 vx2 ux0 lsx0 lsx3 uy uyv) as (S1'' & S2'' & M'' &?&?&?&?&?); eauto.
     intros ??????. eapply H3. eauto.  eapply H0. eauto. eauto. eauto. eauto. eauto. eauto.
-    lia. lia. 
+    lia. lia.
     eexists S1'', S2'', M'', _,_,_,_. intuition. 5: eauto. all: eauto.
 Qed.
 
@@ -1304,7 +1477,8 @@ Proof.
       assert (uy && b2=false). destruct b2,uy; simpl in *; intuition.
       assert (uy = false \/ b2 = false). destruct b2,uy; intuition.
       destruct H18.
-      * destruct (H S1' S2' M' p1 p2 vx1 vx2 ux0 lsx0 lsx3 uy uyv) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 &?); eauto.
+      * (* uy = true *)
+        destruct (H S1' S2' M' p1 p2 vx1 vx2 ux0 lsx0 lsx3 uy uyv) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 &?); eauto.
         intros. rewrite H16, H17 in H19. inversion H19. 
         intros ? Q. destruct b3; intuition.
         intros ? Q. destruct b3; intuition.
@@ -1316,7 +1490,8 @@ Proof.
         eapply H31. split; intuition. 
         intros ? Q. destruct Q. destruct b3; intuition.
         eapply H32. split; intuition.
-      * destruct (H S1' S2' M' p1 p2 vx1 vx2 ux0 lsx0 lsx3 uy uyv) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 &?); eauto.
+      * (* b3 = false  <--  a2 = false *)
+        destruct (H S1' S2' M' p1 p2 vx1 vx2 ux0 lsx0 lsx3 uy uyv) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 &?); eauto.
         intros. rewrite H16, H17 in H19. inversion H19. 
         intros ? Q. destruct b3; intuition.
         intros ? Q. destruct b3; intuition.
@@ -1568,6 +1743,20 @@ Proof.
   exists S1', S2', M'. eapply exp_sub_fresh1; eauto. 
 Qed.
 
+Lemma exp_sub_fresh': forall S1 S2 M H1 H2 V1 V2 t1 t2 T u p1 p2 fr fr' a e,
+    stty_wellformed M ->
+    store_type S1 S2 M p1 p2 -> 
+    bsub fr fr' ->
+    exp_type S1 S2 M H1 H2 V1 V2 t1 t2 T u p1 p2 fr a e ->
+    exp_type S1 S2 M H1 H2 V1 V2 t1 t2 T u p1 p2 fr' a e.
+Proof.
+  intros ?????????????????? SW ST HX. destruct HX as (S1' & S2' & M' & REST). 
+  exists S1', S2', M'. 
+  unfold bsub in *. 
+  destruct fr, fr'; intuition.
+  eapply exp_sub_fresh1; eauto. 
+Qed.
+
 Lemma exp_sub_cap1: forall S1 S2 M H1 H2 V1 V2 S1' S2' M' t1 t2 T u p1 p2 fr a e,
     stty_wellformed M ->
     store_type S1 S2 M p1 p2 -> 
@@ -1601,6 +1790,19 @@ Proof.
   exists S1', S2', M'. eapply exp_sub_cap1; eauto. 
 Qed.
 
+Lemma exp_sub_cap': forall S1 S2 M H1 H2 V1 V2 t1 t2 T u p1 p2 fr a e a',
+    stty_wellformed M ->
+    store_type S1 S2 M p1 p2 -> 
+    bsub a a' ->
+    exp_type S1 S2 M H1 H2 V1 V2 t1 t2 T u p1 p2 fr a e ->
+    exp_type S1 S2 M H1 H2 V1 V2 t1 t2 T u p1 p2 fr a' e.
+Proof.
+  intros ?????????????????? SW ST HX. destruct HX as (S1' & S2' & M' & REST). 
+  exists S1', S2', M'. 
+  unfold bsub in *. destruct a, a'; intuition.
+  eapply exp_sub_cap1; eauto. 
+Qed.
+
 
 Lemma exp_sub1: forall S1 S2 M S1' S2' M' H1 H2 V1 V2 t1 t2 T u p1 p2 fr fr' a a' e e',
     stty_wellformed M ->
@@ -1627,7 +1829,6 @@ Proof.
   intros. destruct H3 as (?&?&?&?).
   eexists _,_,_. eapply exp_sub1; eauto. 
 Qed.
-
 
 Lemma exp_true: forall S1 S2 M H1 H2 V1 V2 p1 p2 uv,
     stty_wellformed M ->
@@ -1923,19 +2124,6 @@ Proof.
     apply qempty.
 Qed.
 
-Lemma envt_tighten: forall M H1 H2 V1 V2 G uw p p',
-    env_type M H1 H2 V1 V2 G uw p ->
-    psub p' p ->
-    env_type M H1 H2 V1 V2 G uw p'.
-Proof.
-  intros. destruct H as (?&?&?&?&?&?).
-  split. 2: split. 3: split. 4: split. 5: split. 
-  eauto. eauto. eauto. eauto. eauto.
-  intros. edestruct H7 as (?&?&?&?&?&?&?&?&?&?&?&?&?&?); eauto.
-  eexists _,_,_,_,_. intuition.
-  eauto. eauto. eauto. eauto. eauto. eauto. subst. eauto. 
-  eauto. eauto. eauto. eauto.
-Qed.
 
 
 
@@ -2010,6 +2198,7 @@ Proof.
   destruct ux; subst. 2: intuition. 
   intros. intros ? Q. eapply LX2 in Q. unfoldq. destruct a1,fr1; intuition. 
 
+  
   exists S1''', S2''', (st_step M M''' ((frf||fr1)&&a2||fr2)).
   exists vy1, vy2.
   eexists.
@@ -2223,6 +2412,316 @@ Proof.
   - intros C. intuition.
 Qed.
 
+Lemma valt_sub_fun_eff: forall v1 v2 M T1 T2 u ls1 ls2 fr1 a1 fr2 a2 ef,
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 fr2 a2 ef) u ls1 ls2 ->
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 fr2 a2 true) u ls1 ls2.
+Proof.
+  intros. destruct v1, v2; simpl in *; try contradiction; intuition.
+  unfold bsub in *.
+  edestruct H with (uyv := true) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ? & ? & ?). 15: eauto. all: eauto.
+  
+  intros ??. destruct ef; intuition.
+  intros ??. destruct ef; intuition.
+  intros [? | ?]. eapply H2; auto. intuition.
+  intros [? | ?]. eapply H12; auto. intuition.
+
+  exists S1'', S2'', M'', vy1, vy2, lsy1, lsy2. intuition. 
+  {
+    subst. destruct a2, ef; simpl in *; intuition.
+  }
+  {
+    subst. destruct a2, ef; simpl in *; intuition.
+  }
+  {
+    subst. eapply valt_usable. eauto. 
+    auto.
+    
+  }
+
+  eapply storew_widen. eauto. unfoldq. destruct ef; intuition.
+  eapply storew_widen. eauto. unfoldq. destruct ef; intuition. 
+Qed.
+
+Lemma valt_sub_fun_fresh: forall v1 v2 M T1 T2 u ls1 ls2 frf fr1 a1 af ef,
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 frf af ef) u ls1 ls2 ->
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 true af ef) u ls1 ls2.
+Proof.
+  intros. destruct v1, v2; simpl in *; try contradiction; intuition.
+  edestruct H as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ? & ? & ?); eauto.
+  intros [? | ?]. eapply H15; auto. intuition.
+  intros [? | ?]. eapply H12; auto. intuition.
+  exists S1'', S2'', M'', vy1, vy2, lsy1, lsy2. intuition.
+  
+  intros ? Q. eapply H27 in Q. unfoldq. destruct frf; intuition.
+  intros ? Q. eapply H28 in Q. unfoldq. destruct frf; intuition.
+Qed.
+
+
+
+Lemma valt_sub_fun_cap1: forall v1 v2 M T1 T2 u ls1 ls2 fr1 a1 a2 e2,
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 false a2 e2) u ls1 ls2 ->
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 false true e2) u ls1 ls2.
+Proof.
+  intros. destruct v1, v2; simpl in *; try contradiction; intuition.
+  unfold bsub in *.
+  edestruct H as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ? & ? & ?). 15: eauto. 10: eauto. 4: eauto. all: auto.
+  intros. eapply H0. destruct e2,uy,a2; simpl in *; eauto. subst uyv. simpl in H13. inversion H13.
+  intros. eapply H1. destruct e2,uy,a2; simpl in *; eauto. subst uyv. simpl in H13. inversion H13.
+  intros. eapply H2. destruct e2, a2, uyv; simpl in *; eauto; subst; simpl in *; auto.
+  intros ? ? ?. destruct H13. eapply H15. auto. auto. eapply H16. auto. auto.
+  intros ? ? ?. destruct H13. eapply H12. auto. auto. eapply H17. auto. auto.
+  exists S1'', S2'', M'', vy1, vy2, lsy1, lsy2. subst uyv. intuition.
+  {
+  subst uy. destruct a2; simpl in *. eapply H23; auto. 
+  intros ? Q. destruct (H26 x) as [? | [? | [? | ?]]]. auto. all: try contradiction.
+  }
+  {
+  subst uy. destruct a2; simpl in *. eapply H24; auto. 
+  intros ? Q. destruct (H27 x) as [? | [? | [? | ?]]]. auto. all: try contradiction.  
+  }
+
+  {
+    destruct a2; simpl in *. auto.
+    eapply valt_usable. eauto. auto.
+  }
+  {
+    destruct a2; simpl in *. auto.
+    repeat rewrite pif_false in *. repeat rewrite por_empty_l in *.
+    intros ? ?. eapply H26 in H31. unfoldq; intuition.
+  }
+
+  {
+    destruct a2; simpl in *. auto.
+    repeat rewrite pif_false in *. repeat rewrite por_empty_l in *.
+    intros ? ?. eapply H27 in H31. unfoldq; intuition.
+  } 
+Qed.
+
+
+
+Lemma valt_sub_fun_cap2: forall v1 v2 M T1 T2 u ls1 ls2 fr1 a1 fr2 a2,
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 fr2 a2 true) u ls1 ls2 ->
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 fr2 true true) u ls1 ls2.
+Proof.
+  intros. destruct v1, v2; simpl in *; try contradiction; intuition.
+  unfold bsub in *. subst uyv.
+  edestruct H with (uy := uy) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ? & ? & ?). 15: eauto. 10: eauto. 4: eauto. all: auto.
+  
+  rewrite H3; auto. destruct a2; simpl; auto.
+  
+  intros ? ? ?. destruct H4. eapply H2. auto. auto. eapply H16. auto. auto.
+  intros ? ? ?. destruct H4. eapply H12. auto. auto. eapply H17. auto. auto.
+  exists S1'', S2'', M'', vy1, vy2, lsy1, lsy2. intuition.
+
+  {
+    intros ? Q. edestruct H26 as [? | [? | [? | ?]]]. eauto.
+    destruct a2; try contradiction. left. auto.
+    destruct a2; try contradiction. right. left. auto.
+    right. right. left. auto.
+    destruct fr2; try contradiction. right. right. right. auto.
+  }
+
+  {
+    intros ? Q. edestruct H27 as [? | [? | [? | ?]]]. eauto.
+    destruct a2; try contradiction. left. auto.
+    destruct a2; try contradiction. right. left. auto.
+    right. right. left. auto.
+    destruct fr2; try contradiction. right. right. right. auto.
+  } 
+Qed.
+
+Lemma valt_sub_fun_cap3: forall v1 v2 M T1 T2 u ls1 ls2 fr1 a1 fr2 a2,
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 fr2 a2 false) u ls1 ls2 ->
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 fr2 true true) u ls1 ls2.
+Proof.
+  intros. destruct v1, v2; simpl in *; try contradiction; intuition.
+  unfold bsub in *. subst uyv.
+
+  edestruct H with (uy := true)(uyv := a2) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ? & ? & ?). 15: eauto. 10: eauto. 4: eauto. all: auto.
+
+  intuition. destruct a2; intuition.
+  
+  rewrite pif_false. unfoldq; intuition.
+  rewrite pif_false. unfoldq; intuition.
+  
+  intros ? ? ?. destruct H4. eapply H2. auto. auto. eapply H16. auto. auto.
+  intros ? ? ?. destruct H4. eapply H12. auto. auto. eapply H17. auto. auto.
+
+  exists S1'', S2'', M'', vy1, vy2, lsy1, lsy2. intuition.
+  rewrite H30 in H3. inversion H3.
+  rewrite H30 in H3. inversion H3.
+
+  eapply valt_usable. eauto. auto.
+  {
+    intros ? Q. edestruct H26 as [? | [? | [? | ?]]]. eauto.
+    destruct a2; try contradiction. left. auto.
+    destruct a2; try contradiction. right. left. auto.
+    right. right. left. auto.
+    destruct fr2; try contradiction. right. right. right. auto.
+  }
+
+  {
+    intros ? Q. edestruct H27 as [? | [? | [? | ?]]]. eauto.
+    destruct a2; try contradiction. left. auto.
+    destruct a2; try contradiction. right. left. auto.
+    right. right. left. auto.
+    destruct fr2; try contradiction. right. right. right. auto.
+  } 
+
+  eapply storew_widen. eauto. unfoldq. intuition.
+  eapply storew_widen. eauto. unfoldq. intuition. 
+Qed.
+
+Lemma valt_sub_fun_cap4: forall v1 v2 M T1 T2 u ls1 ls2 fr1 a1 fr2 a2,
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 fr2 a2 false) u ls1 ls2 ->
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 fr2 true false) u ls1 ls2.
+Proof.
+  intros. destruct v1, v2; simpl in *; try contradiction; intuition.
+  unfold bsub in *. subst uyv.
+
+  destruct uy. {
+   edestruct H with (uy := true) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ? & ? & ?). 15: eauto. 10: eauto. 4: eauto. all: auto.
+   destruct a2; intuition.
+   intros ? ? ?. destruct H4. eapply H15. auto. auto. eapply H16. auto. auto.
+   intros ? ? ?. destruct H4. eapply H12. auto. auto. eapply H17. auto. auto.
+ 
+    exists S1'', S2'', M'', vy1, vy2, lsy1, lsy2. intuition.
+    
+    {
+      destruct a2; simpl in *. auto.
+      repeat rewrite pif_false in *. repeat rewrite por_empty_l in *.
+      intros ? ?. eapply H26 in H2. right. right. auto.
+    }
+
+    {
+      destruct a2; simpl in *. auto.
+      repeat rewrite pif_false in *. repeat rewrite por_empty_l in *.
+      intros ? ?. eapply H27 in H2. right. right. auto.
+    }
+  } {
+    destruct a2. {
+      edestruct H with (uy := false) (uyv := false) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ? & ? & ?). 15: eauto. 10: eauto. 4: eauto. all: auto.
+      intros ? ? ?. destruct H4. eapply H15. auto. auto. eapply H16. auto. auto.
+      intros ? ? ?. destruct H4. eapply H12. auto. auto. eapply H17. auto. auto.
+      exists S1'', S2'', M'', vy1, vy2, lsy1, lsy2. intuition.
+    } {
+        edestruct H with (uy := true) (uyv := true) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ? & ? & ?). all: simpl. 15: eauto. 10: eauto. 4: eauto. all: auto.
+        intros ? ? ?. destruct H4. eapply H15. auto. auto. eapply H16. auto. auto.
+        intros ? ? ?. destruct H4. eapply H12. auto. auto. eapply H17. auto. auto.
+        
+        exists S1'', S2'', M'', vy1, vy2, qempty, qempty. intuition.
+        rewrite plift_empty. unfoldq; intuition.
+        rewrite plift_empty. unfoldq; intuition.
+        eapply valt_reset_locs.  
+        eapply valt_usable. eauto. intuition. intuition.
+        {
+          repeat rewrite pif_false in *. rewrite plift_empty. unfoldq; intuition.
+        }
+
+        {
+          repeat rewrite pif_false in *. rewrite plift_empty. unfoldq; intuition.
+        }
+    }
+  }
+Qed.
+
+
+Lemma valt_sub_fun_cap: forall v1 v2 M T1 T2 u ls1 ls2 fr1 a1 fr2 a2 e2,
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 fr2 a2 e2) u ls1 ls2 ->
+    val_type M v1 v2 (TFun T1 fr1 a1 T2 fr2 true e2) u ls1 ls2.
+Proof.
+  intros. 
+  destruct e2. eapply valt_sub_fun_cap2; eauto. 
+  destruct v1, v2; simpl in *; try contradiction; intuition.
+  unfold bsub in *. subst uyv.
+  destruct uy. {
+   edestruct H with (uy := true) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ? & ? & ?). 15: eauto. 10: eauto. 4: eauto. all: auto.
+   destruct a2; intuition.
+   intros ? ? ?. destruct H4. eapply H15. auto. auto. eapply H16. auto. auto.
+   intros ? ? ?. destruct H4. eapply H12. auto. auto. eapply H17. auto. auto.
+
+    exists S1'', S2'', M'', vy1, vy2, lsy1, lsy2. intuition.
+
+    {
+      destruct a2; simpl in *. auto.
+      repeat rewrite pif_false in *. repeat rewrite por_empty_l in *.
+      intros ? ?. eapply H26 in H2. right. right. auto.
+    }
+
+    {
+      destruct a2; simpl in *. auto.
+      repeat rewrite pif_false in *. repeat rewrite por_empty_l in *.
+      intros ? ?. eapply H27 in H2. right. right. auto.
+    }
+  } {
+    destruct a2. {
+      edestruct H with (uy := false) (uyv := false) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ? & ? & ?). 15: eauto. 10: eauto. 4: eauto. all: auto.
+      intros ? ? ?. destruct H4. eapply H15. auto. auto. eapply H16. auto. auto.
+      intros ? ? ?. destruct H4. eapply H12. auto. auto. eapply H17. auto. auto.
+      exists S1'', S2'', M'', vy1, vy2, lsy1, lsy2. intuition.
+    } {
+        edestruct H with (uy := true) (uyv := true) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ? & ? & ?). all: simpl. 15: eauto. 10: eauto. 4: eauto. all: auto.
+        intros ? ? ?. destruct H4. eapply H15. auto. auto. eapply H16. auto. auto.
+        intros ? ? ?. destruct H4. eapply H12. auto. auto. eapply H17. auto. auto.
+
+        exists S1'', S2'', M'', vy1, vy2, qempty, qempty. intuition.
+        rewrite plift_empty. unfoldq; intuition.
+        rewrite plift_empty. unfoldq; intuition.
+        eapply valt_reset_locs.  
+        eapply valt_usable. eauto. intuition. intuition.
+        {
+          repeat rewrite pif_false in *. rewrite plift_empty. unfoldq; intuition.
+        }
+
+        {
+          repeat rewrite pif_false in *. rewrite plift_empty. unfoldq; intuition.
+        }
+    }
+  }
+Qed.
+
+
+
+
+
+Lemma exp_sub_fun_eff1: forall S1 S2 M S1' S2' M' H1 H2 V1 V2 t1 t2 T1 T2 u p1 p2 frf fr ef rf1 a1 af a e,
+    exp_type1 S1 S2 M H1 H2 V1 V2 t1 t2 S1' S2' M' (TFun T1 rf1 a1 T2 frf af ef) u p1 p2 fr a e ->
+    exp_type1 S1 S2 M H1 H2 V1 V2 t1 t2 S1' S2' M' (TFun T1 rf1 a1 T2 frf af true) u p1 p2 fr a e.
+Proof.
+  intros. destruct H as (v1 & v2 & uv & ls1 & ls2 & ?).
+  eexists v1, v2, uv, ls1, ls2. unfold exp_type2 in *. intuition.
+  eapply valt_sub_fun_eff; eauto.  
+Qed.
+
+Lemma exp_sub_fun_fresh1: forall S1 S2 M S1' S2' M' H1 H2 V1 V2 t1 t2 T1 T2 u p1 p2 frf fr a1 fr1 af a ef e,
+    exp_type1 S1 S2 M H1 H2 V1 V2 t1 t2 S1' S2' M' (TFun T1 fr1 a1 T2 frf af ef) u p1 p2 fr a e ->
+    exp_type1 S1 S2 M H1 H2 V1 V2 t1 t2 S1' S2' M' (TFun T1 fr1 a1 T2 true af ef) u p1 p2 fr a e.
+Proof.
+  intros. destruct H as (v1 & v2 & uv & ls1 & ls2 & ?).
+  eexists v1, v2, uv, ls1, ls2. unfold exp_type2 in *. intuition.
+  eapply valt_sub_fun_fresh; eauto.  
+Qed.
+
+Lemma exp_sub_fun_cap1: forall S1 S2 M S1' S2' M' H1 H2 V1 V2 t1 t2 T1 T2 u p1 p2 frf fr a1 rf1 af a ef e,
+    exp_type1 S1 S2 M H1 H2 V1 V2 t1 t2 S1' S2' M' (TFun T1 rf1 a1 T2 frf af ef) u p1 p2 fr a e ->
+    exp_type1 S1 S2 M H1 H2 V1 V2 t1 t2 S1' S2' M' (TFun T1 rf1 a1 T2 frf true ef) u p1 p2 fr a e.
+Proof.
+  intros. destruct H as (v1 & v2 & uv & ls1 & ls2 & ?).
+  eexists v1, v2, uv, ls1, ls2. unfold exp_type2 in *. intuition.
+  eapply valt_sub_fun_cap; eauto.
+Qed.
+
+Lemma exp_sub_fun1: forall S1 S2 M S1' S2' M' H1 H2 V1 V2 t1 t2 T1 T2 u p1 p2 frf frf' fr rf1 a1 af af' a ef ef' e,
+    exp_type1 S1 S2 M H1 H2 V1 V2 t1 t2 S1' S2' M' (TFun T1 rf1 a1 T2 frf af ef) u p1 p2 fr a e ->
+    bsub frf frf' ->
+    bsub af af' ->
+    bsub ef ef' ->
+    exp_type1 S1 S2 M H1 H2 V1 V2 t1 t2 S1' S2' M' (TFun T1 rf1 a1 T2 frf' af' ef') u p1 p2 fr a e.
+Proof.
+  intros. destruct frf,frf',af,af',ef,ef'; unfold bsub in *; intuition;
+  try eapply exp_sub_fun_eff1; try eapply exp_sub_fun_fresh1; try eapply exp_sub_fun_cap1; eauto.
+Qed.
+
 Lemma exp_strengthen1: forall S1 S2 M S1' S2' M' H1 H2 V1 V2 t1 t2 T p1 p2 fr a e,
     exp_type1 S1 S2 M H1 H2 V1 V2 t1 t2 S1' S2' M' T true p1 p2 fr a e ->
     psub (exp_locs V1 t1) pempty ->
@@ -2348,14 +2847,7 @@ Proof.
 Qed.
 
 
-Lemma envc_tighten: forall G p p' a,
-    env_cap G p a ->
-    psub (plift p') (plift p) ->
-    env_cap G p' a.
-Proof.
-  intros. intros ??????.
-  eapply H. eauto. rewrite H0. eauto. eauto. 
-Qed.
+
 
 Lemma envc_extend: forall G p a a1 fr1 T1,
     env_cap G p a ->
@@ -2647,8 +3139,6 @@ Proof.
   eauto. eauto. eauto. rewrite plift_empty. unfoldq. intuition. 
 Qed.
 
-
-
 Lemma envt_strengthenW1: forall M H1 H2 V1 V2 env pf,
     env_type M H1 H2 V1 V2 env true (plift pf) ->
     env_type M H1 H2 V1 V2 env false (plift pf).
@@ -2680,6 +3170,7 @@ Proof.
   split. 2: split. 3: split. 4: split. 5: split. 
   eauto. eauto. eauto. eauto. eauto. 
   intros. edestruct H7 as (?&?&?&?&?&?&?&?&?&?&?&?&?&?); eauto.
+  
   simpl in *. 
   intros. assert (x < length V1) as A. eapply indexr_var_some' in H9. lia. 
   eapply indexr_var_some in A. destruct A as (ls1' & ?). 
@@ -2708,6 +3199,7 @@ Proof.
   rewrite map_length. lia.
   eauto. 
   intros. edestruct H7 as (?&?&?&?&?&?&?&?&?&?&?&?&?&?); eauto.
+  
   simpl in *. 
   intros. assert (x < length V1) as A. eapply indexr_var_some' in H9. lia. 
   eapply indexr_var_some in A. destruct A as (ls1' & ?). 
@@ -2805,6 +3297,7 @@ Proof.
     all: eauto.
     3: { intros. eapply valt_store_reset. eauto.
     intuition. intuition. eauto. eauto. }    
+    
     intros. intuition. 
     assert (ls1 = qempty). {
     eapply functional_extensionality. intros.
@@ -2899,13 +3392,13 @@ Proof.
   destruct u; intuition.
 Qed.
 
-
+(* env unrestricted: result always usable *)
 Definition sem_type_useU G t1 t2 T p fr a e :=
   forall M H1 H2 V1 V2,
     env_type M H1 H2 V1 V2 G true p ->
     exp_type_eff M H1 H2 V1 V2 t1 t2 T true fr a e.
 
-
+(* env restricted: can't have effect, result unusable if a *)
 Definition sem_type_mentionU G t1 t2 T p fr a e :=
   forall M H1 H2 V1 V2 V1' V2',
     env_type M H1 H2 V1' V2' G e p ->
@@ -3199,7 +3692,6 @@ Proof.
           replace a2 with false in *. 2: intuition.
           replace e2 with false in *. 2: intuition.
           destruct uy; inversion HeqD. } eauto. 
-
                 
         assert (e2||a2 = true). destruct e2,a2; intuition. 
 
@@ -3401,6 +3893,333 @@ Proof.
 
 Qed.
 
+Lemma sem_sub_fresh: forall G t1 t2 T fr a e p,
+    sem_type G t1 t2 T p fr  a e ->
+    sem_type G t1 t2 T p true a e.
+Proof.
+  intros. intros um E ? ? ? ? ? WFE. intros SW ?? ps1 ps2 ST P1 P2.
+  eapply exp_sub_fresh; eauto. eapply H; auto.
+Qed.
+
+Lemma sem_sub_fresh': forall G t1 t2 T fr fr' a e p,
+    sem_type G t1 t2 T p fr  a e ->
+    bsub fr fr' ->
+    sem_type G t1 t2 T p fr' a e.
+Proof.
+  intros. intros um E ? ? ? ? ? WFE. intros SW ?? ps1 ps2 ST P1 P2.
+  unfold bsub in *. destruct fr, fr'; intuition. 
+  eapply H; auto.
+  eapply exp_sub_fresh; eauto. eapply H; auto.
+  eapply H; auto.
+Qed.
+
+Lemma sem_sub_cap: forall G t1 t2 T fr a e p,
+    sem_type G t1 t2 T p fr a e ->
+    sem_type G t1 t2 T p fr true e.
+Proof.
+  intros. intros um E ? ? ? ? ? WFE. intros SW ?? ps1 ps2 ST P1 P2.
+  eapply exp_sub_cap; eauto. eapply H; auto.
+Qed.
+
+Lemma sem_sub_cap': forall G t1 t2 T fr a e p a',
+    sem_type G t1 t2 T p fr a e ->
+    bsub a a' ->
+    sem_type G t1 t2 T p fr a' e.
+Proof.
+  intros. intros um E ? ? ? ? ? WFE. intros SW ?? ps1 ps2 ST P1 P2.
+  destruct a, a'; intuition.
+  eapply H; eauto.
+  eapply exp_sub_cap; eauto. eapply H; auto.
+  eapply H; eauto.
+Qed.
+
+Lemma sem_sub_eff: forall G t1 t2 T fr a e p e',
+    sem_type G t1 t2 T p fr a e ->
+    bsub e e' ->
+    sem_type G t1 t2 T p fr a e'.
+Proof.
+  intros. intros um E ? ? ? ? ? WFE. intros SW ?? ps1 ps2 ST P1 P2.
+  destruct e, e'; intuition.
+  eapply H; eauto.
+  eapply exp_sub_eff; eauto. eapply H; auto. unfold bsub. intuition.
+  rewrite pif_false. unfoldq; intuition. rewrite pif_false. unfoldq; intuition.
+  eapply H; eauto.
+Qed.
+
+Definition sem_stp T1 T2 :=
+  forall M ,
+    (forall v1 v2 ux lsv1 lsv2,
+    val_type M v1 v2 T1 ux lsv1 lsv2 ->
+    val_type M v1 v2 T2 ux lsv1 lsv2 )
+.
+
+
+
+Lemma exp_sub_stp2: forall S1 S2 M H1 H2 V1 V2 t1 t2 T1 T2 p1 p2 v1 v2 uv ls1 ls2 S1' S2' M' u fr fr' a a' e e',
+  stty_wellformed M ->
+  store_type S1 S2 M p1 p2 ->
+  exp_type2 v1 v2 u ls1 ls2 S1 S2 M H1 H2 V1 V2 t1 t2 S1' S2' M' T1 uv p1 p2 fr a e ->
+  bsub fr fr' ->
+  bsub a a' ->
+  bsub e e' ->
+  sem_stp T1 T2 ->
+  exp_type2 v1 v2 u (if (negb a' || u) then ls1 else qempty) 
+                     (if (negb a' || u) then ls2 else qempty) 
+                     S1 S2 M H1 H2 V1 V2 t1 t2 S1' S2' M' T2 (negb a' || u) p1 p2 fr' a' e'.
+Proof.
+  intros. unfold bsub in *.
+  unfold exp_type2 in H3. unfold exp_type2.
+  intuition.
+  destruct a, a', uv,u; simpl in *; subst; intuition. 
+  eapply valt_reset_locs. eapply valt_usable. eauto. intuition. intuition. 
+  eapply valt_reset_locs. eapply valt_usable. eauto. intuition. intuition. 
+  
+
+  rewrite H23. rewrite plift_empty. unfoldq; intuition.
+  rewrite H23. rewrite plift_empty. unfoldq; intuition.
+  {
+    remember (negb a' || u) as b. 
+    destruct b. 2: { rewrite plift_empty. unfoldq; intuition. }
+    intros ? ?. destruct (H19 x) as [H_a | [? | H_fr]]. auto.
+    left. destruct a; simpl in *; try contradiction. rewrite H5; auto.
+    contradiction.
+    right. right. destruct fr, fr'; try contradiction; intuition.
+  }
+  {
+    remember (negb a' || u) as b. 
+    destruct b. 2: { rewrite plift_empty. unfoldq; intuition. }
+    intros ? ?. destruct (H20 x) as [H_a | [? | H_fr]]. auto.
+    left. destruct a; simpl in *; try contradiction. rewrite H5; auto.
+    contradiction.
+    right. right. destruct fr, fr'; try contradiction; intuition.
+  }
+  {
+    eapply storew_widen; eauto. destruct e, e'; unfoldq; intuition.
+  }
+  {
+    eapply storew_widen; eauto. destruct e, e'; unfoldq; intuition.
+  }
+  eapply H24. destruct fr, fr'; try contradiction; intuition. 
+Qed.
+
+Lemma sem_stp_bool: 
+  sem_stp TBool TBool.
+Proof.
+  intros. intros M v1 v2 ux lsv1 lsv2. 
+  intros. simpl in *. destruct v1,v2; try contradiction. auto.
+Qed.
+
+Lemma sem_stp_ref:
+  sem_stp TRef TRef.
+Proof.
+  intros. intros M v1 v2 ux lsv1 lsv2. 
+  intros. simpl in *. destruct v1,v2; try contradiction. auto.
+Qed.
+
+Lemma sem_stp_fun1: forall T1 fr1 a1 T2 fr2 a2 e2 T3 fr3 a3 T4 fr4 e4,
+  sem_stp T3 T1 ->
+  sem_stp T2 T4 ->
+  bsub a3 a1 ->
+  bsub fr3 fr1 ->
+  bsub fr2 fr4 ->
+  bsub e2 e4 -> 
+  sem_stp (TFun T1 fr1 a1 T2 fr2 a2 e2) (TFun T3 fr3 a3 T4 fr4 a2 e4).
+Proof.
+  intros T1 fr1 a1 T2 fr2 a2 e2 T3 fr3 a3 T4 fr4 e4. 
+  intros HST1 HST2 HSA1 HSFR1 HSFR2 HSE.
+  intros M v1 v2. 
+  intros. 
+  unfold bsub in *.
+  simpl in *. destruct v1,v2; try contradiction. 
+  intros. unfold bsub in *. 
+
+  assert (e2 ||uy && a2 = true -> e4 || uy && a2 = true) as P1. {
+    destruct e4, uy, e2, a2; simpl in *; auto.
+  }
+  edestruct H as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ?). 
+  { intros. eapply H0. eauto. }
+  { intros. eapply H1. eauto. }
+  { intros. eapply H2. eauto. }
+  { intros. eapply H3. auto. }
+  {  auto.  }
+  { intros. eapply H5. destruct fr1, a1, fr3, a3; intuition.  }
+  auto. lia. lia. eauto. 
+  { intros ? ?. eapply H10. destruct e2, e4; intuition; try contradiction. eauto. }
+  { intros ? ?. eapply H11. destruct e2, e4; intuition; try contradiction. eauto. }
+  { intros. eapply H12. destruct fr1, a1, fr3, a3; simpl in *; intuition. }
+  { intros. eapply H13. destruct fr1, a1, fr3, a3; simpl in *; intuition. }
+  { eapply HST1. eauto. }
+  exists S1'', S2'', M'', vy1, vy2, lsy1, lsy2. intuition.
+  {
+    intros ? ?. destruct (H25 x) as [H_f | [H_x | [? | H_fr]]]. auto.
+    left. destruct a2; try contradiction; intuition.
+    right. left. destruct a2; try contradiction; intuition.
+    right. right. left. auto.
+    right. right. right. destruct fr2, fr4; try contradiction; intuition.
+  }
+  {
+    intros ? ?. destruct (H26 x) as [H_f | [H_x | [? | H_fr]]]. auto.
+    left. destruct a2; try contradiction; intuition.
+    right. left. destruct a2; try contradiction; intuition.
+    right. right. left. auto.
+    right. right. right. destruct fr2, fr4; try contradiction; intuition.
+  }
+  {
+    intros ? ?. eapply H27. destruct H13. split; auto.
+    destruct e2, e4; try contradiction; intuition.
+  }
+
+  {
+    intros ? ?. eapply H28. destruct H13. split; auto. 
+    destruct e2, e4; try contradiction; intuition.
+  }
+  eapply H30. destruct fr2, fr4; intuition.
+Qed.
+
+Lemma sem_stp_fun2: forall T1 fr1 a1 T2 fr2 a2 e2 a4,
+  bsub a2 a4 -> 
+  sem_stp (TFun T1 fr1 a1 T2 fr2 a2 e2) (TFun T1 fr1 a1 T2 fr2 a4 e2).
+Proof. 
+  intros. intros M v1 v2 ux lsv1 lsv2 W.
+  unfold bsub in *.
+  destruct a2, a4; auto. intuition.
+  eapply valt_sub_fun_cap. eauto.
+Qed. 
+
+Lemma sem_stp_fun: forall T1 fr1 a1 T2 fr2 a2 e2 T3 fr3 a3 T4 fr4 a4 e4,
+  sem_stp T3 T1 ->
+  sem_stp T2 T4 ->
+  bsub a3 a1 ->
+  bsub fr3 fr1 ->
+  bsub a2 a4 ->
+  bsub fr2 fr4 ->
+  bsub e2 e4 -> 
+  sem_stp (TFun T1 fr1 a1 T2 fr2 a2 e2) (TFun T3 fr3 a3 T4 fr4 a4 e4).
+Proof.
+  intros T1 fr1 a1 T2 fr2 a2 e2 T3 fr3 a3 T4 fr4 a4 e4. 
+  intros HST1 HST2 HSA1 HSFR1 HSA2 HSFR2 HSE.
+  intros M v1 v2. 
+  intros.   
+  simpl in *. destruct v1,v2; try contradiction. 
+  intros. unfold bsub in *. 
+
+  assert (e2 ||uy && a2 = true -> e4 || uy && a4 = true) as P1. {
+    destruct e4, uy, a4, e2, a2; simpl in *; auto.
+  }
+  destruct uy. {
+    edestruct H  with (uy := true) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ?). 
+    { intros. eapply H0. eauto. }
+    { intros. eapply H1. eauto. }
+    { intros. eapply H2. eauto. }
+    { intros. eapply H3. auto. }
+    {  destruct a2, uyv; simpl in *; intuition. subst a4. simpl in *. inversion H4.  }
+    { intros. eapply H5. destruct fr1, a1, fr3, a3; intuition.  }
+    auto. lia. lia. eauto. 
+    { intros ? ?. eapply H10. destruct e2, e4; intuition; try contradiction. eauto. }
+    { intros ? ?. eapply H11. destruct e2, e4; intuition; try contradiction. eauto. }
+    { intros. eapply H12. destruct fr1, a1, fr3, a3; simpl in *; intuition. }
+    { intros. eapply H13. destruct fr1, a1, fr3, a3; simpl in *; intuition. }
+    { eapply HST1. eauto. }
+    exists S1'', S2'', M'', vy1, vy2, lsy1, lsy2. intuition.
+    {
+      intros ? ?. destruct (H25 x) as [H_f | [H_x | [? | H_fr]]]. auto.
+      left. destruct a2, a4; try contradiction; intuition.
+      right. left. destruct a2, a4; try contradiction; intuition.
+      right. right. left. auto.
+      right. right. right. destruct fr2, fr4; try contradiction; intuition.
+    }
+    {
+      intros ? ?. destruct (H26 x) as [H_f | [H_x | [? | H_fr]]]. auto.
+      left. destruct a2, a4; try contradiction; intuition.
+      right. left. destruct a2, a4; try contradiction; intuition.
+      right. right. left. auto.
+      right. right. right. destruct fr2, fr4; try contradiction; intuition.
+    }
+    {
+      intros ? ?. eapply H27. destruct H13. split; auto.
+      destruct e2, e4; try contradiction; intuition.
+    }
+
+    {
+      intros ? ?. eapply H28. destruct H13. split; auto. 
+      destruct e2, e4; try contradiction; intuition.
+    }
+    eapply H30. destruct fr2, fr4; intuition.
+  } {
+    destruct a2. {
+      edestruct H with (uy := false)  as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ? & ? & ?). 15: eauto. 
+      10: eauto. 4: eauto. all: auto.
+      { destruct e4; simpl in *; intuition; subst; simpl in *; try inversion H4.  }
+      { intros. eapply H5. destruct fr1, a1, fr3, a3; simpl in *; intuition.  }
+      { intros ? ?. eapply H10. destruct e2; try contradiction. destruct e4; simpl in *; intuition.   }
+      { intros ? ?. eapply H11. destruct e2; try contradiction. destruct e4; simpl in *; intuition.   }
+      { intros. eapply H12. destruct fr1, a1, fr3, a3; simpl in *; intuition. }
+      { intros. eapply H13. destruct fr1, a1, fr3, a3; simpl in *; intuition. }
+      exists S1'', S2'', M'', vy1, vy2, lsy1, lsy2. intuition. 
+      {
+        intros ? ?. destruct (H25 x) as [H_f | [H_x | [? | H_fr]]]. auto.
+        left. destruct a4; try contradiction; intuition.
+        right. left. destruct a4; try contradiction; intuition.
+        right. right. left. auto.
+        right. right. right. destruct fr2, fr4; try contradiction; intuition.
+      }
+      {
+        intros ? ?. destruct (H26 x) as [H_f | [H_x | [? | H_fr]]]. auto.
+        left. destruct a4; try contradiction; intuition.
+        right. left. destruct a4; try contradiction; intuition.
+        right. right. left. auto.
+        right. right. right. destruct fr2, fr4; try contradiction; intuition.
+      }
+      {
+        intros ? ?. eapply H27. destruct H13. split; auto.
+        destruct e2, e4; try contradiction; intuition.
+      }
+
+      {
+        intros ? ?. eapply H28. destruct H13. split; auto. 
+        destruct e2, e4; try contradiction; intuition.
+      }
+      eapply H30. destruct fr2, fr4; intuition.
+    } {
+      edestruct H with (uy := true) (uyv := true) as (S1'' & S2'' & M'' & vy1 & vy2 & lsy1 & lsy2 & ? & ? & ?). all: simpl. 15: eauto. 10: eauto. 4: eauto. all: auto.
+      { intros. eapply H5. destruct fr1, a1, fr3, a3; intuition.  } 
+      { intros ? ?. eapply H10. destruct e2; try contradiction. destruct e4; simpl in *; intuition.   }
+      { intros ? ?. eapply H11. destruct e2; try contradiction. destruct e4; simpl in *; intuition.   }
+      { intros. eapply H12. destruct fr1, a1, fr3, a3; simpl in *; intuition. }
+      { intros. eapply H13. destruct fr1, a1, fr3, a3; simpl in *; intuition. }
+      exists S1'', S2'', M'', vy1, vy2, qempty, qempty. intuition.
+      rewrite plift_empty. unfoldq; intuition. 
+      rewrite plift_empty. unfoldq; intuition.
+      eapply valt_reset_locs. eapply valt_usable. eauto. intuition. intuition.
+      rewrite plift_empty. unfoldq; intuition. 
+      rewrite plift_empty. unfoldq; intuition.
+
+      {
+        intros ? ?. eapply H27. destruct H13. split; auto.
+        destruct e2, e4; try contradiction; intuition.
+      }
+
+      {
+        intros ? ?. eapply H28. destruct H13. split; auto. 
+        destruct e2, e4; try contradiction; intuition.
+      }
+      eapply H30. destruct fr2, fr4; intuition.
+
+    }
+  }
+Qed.
+
+
+
+Theorem stp_fundamental: forall T1 T2,
+  stp T1 T2 ->
+  sem_stp T1 T2.
+Proof.
+  intros. induction H.
+  + eapply sem_stp_bool.
+  + eapply sem_stp_ref.
+  + eapply sem_stp_fun; eauto.
+Qed.
 
 Theorem fundamental: forall G t T p fr a e,
     has_type G t T p fr a e -> 
@@ -3414,7 +4233,6 @@ Proof.
     eapply exp_false; eauto. 
   - (* var *) 
     eapply WFE in H as H'. destruct H' as (v1 & v2 & uv & ls1 & ls2 & IX1 & IX2 & IV1 & IV2 & IW & UX & VX & VQ1 & VQ2).
-    
     inversion IW. subst uv. 
     eapply exp_var; eauto. 
     eapply VX. rewrite plift_one. intuition.
@@ -3631,7 +4449,19 @@ Proof.
     unfoldq. intuition.
     unfoldq. intuition.
     destruct e. eapply (IHW false); eauto. unfold bsub in E. intuition.
+  - (* sub_stp *)
+    unfold bsub in *. 
+    eapply IHW in WFE as A. 2: { unfold bsub. destruct e1, e2, um; simpl in *; intuition. }
+    unfold exp_type_eff, exp_type, exp_type1 in A.
+    edestruct A as (S1'&S2'&M'&?&?&?&?&?&?). all: eauto.
+    { intros ? ?. eapply P1. destruct e1, e2; try contradiction; intuition. }
+    { intros ? ?. eapply P2. destruct e1, e2; try contradiction; intuition. }
+    unfold exp_type. unfold exp_type1.
+    exists S1', S2', M', x, x0, (negb a2 || um), (if (negb a2 || um) then x2 else qempty), (if (negb a2 || um) then x3 else qempty).
+    eapply exp_sub_stp2; eauto. 
+    eapply stp_fundamental in H. eapply H.
 Qed.
+
 
 Theorem fundamental': forall G t T p fr a e af,
     has_type G t T p fr a e -> 
@@ -3675,479 +4505,6 @@ Proof.
 Qed.
 
 
-
-
-(* ---------- encoding 1: pure effect system  ---------- *)
-
-Inductive ty_E : Type :=
-| TBool_E  : ty_E
-| TRef_E   : ty_E
-| TFun_E   : ty_E -> ty_E -> bool -> ty_E  (* T1 -> T2 e *)
-.
-
-Definition tenv_E := list ty_E.
-
-Fixpoint tty_E T :=
-    match T with 
-    | TBool_E => TBool
-    | TRef_E => TRef 
-    | TFun_E T1 T2 e => TFun (tty_E T1) true true (tty_E T2) true true e 
-end.
-
-Definition ttenv_E (G: tenv_E): tenv := map (fun p => (tty_E p, true, true)) G.
-
-Inductive has_type_E: tenv_E -> tm -> ty_E -> ql -> bool -> Prop := 
-| t_true_E: forall env,
-    has_type_E env ttrue TBool_E qempty false
-| t_false_E: forall env,
-    has_type_E env tfalse TBool_E qempty false
-| t_var_E: forall x env T,
-    indexr x env = Some T ->
-    has_type_E env (tvar x) T (qone x) false
-| t_ref_E: forall t env p e,
-    has_type_E env t TBool_E p e ->
-    has_type_E env (tref t) TRef_E p true
-| t_get_E: forall t env p e,
-    has_type_E env t TRef_E p e ->
-    has_type_E env (tget t) TBool_E p true
-| t_put_E: forall t1 t2 env p1 p2 e1 e2,
-    has_type_E env t1 TRef_E p1 e1 ->
-    has_type_E env t2 TBool_E p2 e2 ->
-    has_type_E env (tput t1 t2) TBool_E (qor p1 p2) true
-| t_app_E: forall env f t T1 T2 pf p1 e1 e2 ef,
-    has_type_E env f (TFun_E T1 T2 e2) pf ef ->
-    has_type_E env t T1 p1 e1 ->
-    has_type_E env (tapp f t) T2 (qor pf p1) (e1||ef||e2)
-| t_abs_E: forall env t T1 T2 p2 pf e2,
-    has_type_E (T1::env) t T2 p2 e2 ->
-    pf = (qdiff p2 (qone (length env))) -> 
-    env_cap (ttenv_E env) pf true -> 
-    has_type_E env (tabs t) (TFun_E T1 T2 e2) pf false
-| t_not_E: forall env t p e,
-    has_type_E env t TBool_E p e ->
-    has_type_E env (tnot t) TBool_E p e 
-| t_bin_E: forall env t1 t2 p1 p2 e1 e2,
-    has_type_E env t1 TBool_E p1 e1 ->
-    has_type_E env t2 TBool_E p2 e2 ->
-    has_type_E env (tbin t1 t2) TBool_E (qor p1 p2) (e1||e2)
-| t_sub_eff_E: forall env t T p e,
-    has_type_E env t T p e ->
-    has_type_E env t T p true
-.
-
-Lemma hast_E_fv: forall G t T p e,
-    has_type_E G t T p e -> p = fv (length G) t.
-Proof.
-  intros. induction H; simpl; eauto.
-  - rewrite IHhas_type_E1, IHhas_type_E2. eauto.
-  - rewrite IHhas_type_E1, IHhas_type_E2. eauto.
-  - rewrite H0, IHhas_type_E. simpl. eauto.
-  - rewrite IHhas_type_E1, IHhas_type_E2. eauto. 
-Qed.
-
-Lemma translate_E: forall G t T p e,
-    has_type_E G t T p e ->
-    has_type (ttenv_E G) t (tty_E T) p true true e.
-Proof.
-  intros. induction H.
-  - eapply t_sub_fresh. eapply t_sub_cap. eapply t_true.
-  - eapply t_sub_fresh. eapply t_sub_cap. eapply t_false.
-  - assert (indexr x (ttenv_E env) = Some (tty_E T, true, true)). {
-      unfold ttenv_E. erewrite indexr_map. 2: eauto. eauto. }
-    eapply t_var in H0 as H2. replace true with (true||true) at 2. 2: auto.
-    eapply t_sub_fresh; eauto.   
-  - eapply t_ref in IHhas_type_E.
-    eapply t_sub_eff. eapply t_sub_cap. eapply IHhas_type_E.
-  - eapply t_get in IHhas_type_E. replace (e||true) with true in IHhas_type_E. 2: { destruct e; intuition. }
-    eapply t_sub_fresh. eapply t_sub_cap. eauto.
-  - eapply t_put in IHhas_type_E1. 2: eauto. 
-    replace (e1||e2||true) with true in IHhas_type_E1. 2: { destruct e1,e2; intuition. }
-    eapply t_sub_fresh. eapply t_sub_cap. eauto.   
-  - simpl in *.
-    eapply t_app in IHhas_type_E2 as HA.
-    2: { eapply IHhas_type_E1. }
-    replace ((true || true) && true || true) with true in HA. 2: { auto. }
-    replace ((true || true) && true) with true in HA. 2: auto.
-    replace (e1||ef||(true||true)&&e2) with (e1||ef||e2) in HA. 2: auto.
-    auto.
-  - simpl in *. eapply t_abs in IHhas_type_E as HA.
-    2: eauto. 
-    replace ((qor (qdiff p2 (qone (length (ttenv_E env))))(qdiff p2 (qone (length (ttenv_E env))))))
-      with  pf in HA. 
-    2: { unfold ttenv_E. rewrite map_length. rewrite qor_idempetic. auto.  }
-    eapply t_sub_fresh. eauto. 
-    rewrite qor_idempetic. unfold ttenv_E. rewrite map_length. subst pf. eapply H1.
-  - eapply t_sub_fresh. eapply t_sub_cap. eapply t_not in IHhas_type_E; eauto.
-  - eapply t_bin in IHhas_type_E2. 2: eapply IHhas_type_E1.
-    eapply t_sub_fresh. eapply t_sub_cap. eauto.
-  - eapply t_sub_eff. eauto.
-Qed.
-
-Theorem fundamental_E: forall G t T p e,
-    has_type_E G t T p e ->
-    sem_type (ttenv_E G)  t t (tty_E T) (plift p) true true e.
-Proof.
-  intros.
-  eapply translate_E in H as H1.
-  eapply fundamental in H1 as H2. 
-  auto.
-Qed.
-
-
-(* ---------- encoding 2: pure ability system  ---------- *)
-
-Inductive ty_A : Type :=
-  | TBool_A  : ty_A
-  | TRef_A   : ty_A
-  | TFun_A   : ty_A -> bool -> ty_A -> bool -> ty_A (* T1^a1 -> T2^a2 *)
-.
-
-Definition tenv_A := list (ty_A * bool).
-
-Fixpoint tty_A T :=
-  match T with
-  | TBool_A => TBool
-  | TRef_A => TRef
-  | TFun_A T1 a1 T2 a2 => TFun (tty_A T1) a1 a1 (tty_A T2) a2 a2 true
-  end.
-
-Definition ttenv_A (G: tenv_A): tenv := map (fun p => (tty_A (fst p), snd p, snd p)) G. 
-
-
-Inductive has_type_A : tenv_A -> tm -> ty_A -> ql -> bool -> Prop :=
-| t_true_A: forall env,
-    has_type_A env ttrue TBool_A qempty false
-| t_false_A: forall env,
-    has_type_A env tfalse TBool_A qempty false
-| t_var_A: forall x env T a,
-    indexr x env = Some (T, a) ->
-    has_type_A env (tvar x) T (qone x) a
-| t_ref_A: forall t env p a,
-    has_type_A env t TBool_A p a ->
-    has_type_A env (tref t) TRef_A p true
-| t_get_A: forall t env p a,
-    has_type_A env t TRef_A p a ->
-    has_type_A env (tget t) TBool_A p false
-| t_put_A: forall t1 t2 env p1 p2 a1 a2,
-    has_type_A env t1 TRef_A p1 a1 ->
-    has_type_A env t2 TBool_A p2 a2 ->
-    has_type_A env (tput t1 t2) TBool_A (qor p1 p2) false
-| t_app_A: forall env f t T1 T2 pf p1 a1 a2 af,
-    has_type_A env f (TFun_A T1 a1 T2 a2) pf af ->
-    has_type_A env t T1 p1 a1 ->
-    has_type_A env (tapp f t) T2 (qor pf p1) a2
-| t_abs_A: forall env t T1 T2 p2 pf a1 a2 af,
-    has_type_A ((T1, a1)::env) t T2 p2 a2 ->
-    pf = (qdiff p2 (qone (length env))) ->
-    env_cap (ttenv_A env) pf af ->
-    has_type_A env (tabs t) (TFun_A T1 a1 T2 a2) pf af
-| t_not_A: forall env t p a,
-    has_type_A env t TBool_A p a ->
-    has_type_A env (tnot t) TBool_A p a
-| t_bin_A: forall env t1 t2 p1 p2 a1 a2,
-    has_type_A env t1 TBool_A p1 a1 ->
-    has_type_A env t2 TBool_A p2 a2 ->
-    has_type_A env (tbin t1 t2) TBool_A (qor p1 p2) false
-| t_sub_eff_A: forall env t T p a,
-    has_type_A env t T p a ->
-    has_type_A env t T p true
-.
-
-Lemma hast_A_fv: forall G t T p a,
-    has_type_A G t T p a -> p = fv (length G) t.
-Proof.
-  intros. induction H; simpl; eauto.
-  - rewrite IHhas_type_A1, IHhas_type_A2. eauto.
-  - rewrite IHhas_type_A1, IHhas_type_A2. eauto.
-  - rewrite H0, IHhas_type_A. simpl. eauto.
-  - rewrite IHhas_type_A1, IHhas_type_A2. eauto.
-Qed.
-
-Lemma translate_A: forall G t T p a,
-    has_type_A G t T p a ->
-    has_type (ttenv_A G) t (tty_A T) p a a true.
-Proof.
-  intros. induction H.
-  - eauto. 
-  - eauto.
-  - assert (indexr x (ttenv_A env) = Some (tty_A T, a, a)). {
-      unfold ttenv_A. erewrite indexr_map. 2: eauto. eauto. }
-    eapply t_var in H0 as H2.
-    destruct a; eauto.
-  - eauto. 
-  - eauto. 
-  - eauto.
-  - simpl in *.
-    eapply t_app in IHhas_type_A2 as HA.
-    2: { replace (a1 || a1) with a1. 2: destruct a1; eauto. eauto. }
-    destruct a1,af,a2; eauto. 
-  - simpl in *. eapply t_abs in IHhas_type_A as HA.
-    3: eauto. 2: { unfold ttenv_A. rewrite map_length. eauto. }
-    destruct af; eauto.
-  - eapply t_not in IHhas_type_A. 
-    destruct a; auto. eapply t_sub_cap; eauto.
-  - eauto.
-  - eauto. 
-Qed.
-
-Theorem fundamental_A: forall G t T p a,
-    has_type_A G t T p a ->
-    forall e,
-      env_cap (ttenv_A G) p e ->
-      sem_type (ttenv_A G) t t (tty_A T) (plift p) a (a&&e) e.
-Proof.
-  intros.
-  eapply translate_A in H as H1.
-  eapply fundamental' in H1 as H2. eauto. eauto. 
-Qed.
-
-
-(* ---------- LR contextual equivalence  ---------- *)
-
-(* Define typed contexts and prove that the binary logical
-   relation implies contextual equivalence (congruency wrt
-   putting expressions in context *)
-
-Inductive ctx_type : (tm -> tm) -> tenv -> ty -> pl ->  bool -> bool -> bool -> tenv -> ty -> pl -> bool -> bool -> bool -> Prop :=
-| c_top: forall G T p fr a e,
-    ctx_type (fun x => x) G T p fr a e G T p fr a e
-| c_ref: forall G t p fr a e,
-   has_type G t TBool p fr a e ->
-   ctx_type (fun x => tref x) G TBool (plift p) fr a e G TRef (plift p) true false e 
-| c_get: forall G t p fr a e,
-   has_type G t TRef p fr a e -> 
-   ctx_type (fun x => tget x) G TRef (plift p) fr a e G TBool (plift p) false false (e||a)
-| c_put1: forall G t1 p1 fr1 a1 e1 p2 fr2 a2 e2,
-   has_type G t1 TRef p1 fr1 a1 e1 ->
-   ctx_type (fun x => tput t1 x) G TBool (plift p2) fr2 a2 e2 G TBool (por (plift p1) (plift p2)) false false (e1||e2||a1)
-| c_put2: forall G t2 p2 fr2 a2 e2 p1 fr1 a1 e1,
-   has_type G t2 TBool p2 fr2 a2 e2 ->
-   ctx_type (fun x => tput x t2) G TRef (plift p1) fr1 a1 e1 G TBool (por (plift p1)(plift p2)) false false (e1||e2||a1)
-| c_app1: forall t G T1 p2 fr1 a1 e1 T2 fr2 a2 e2 p1 frf af ef,
-    has_type G t T1 p2 fr1 a1 e1 ->
-    ctx_type (fun x => tapp x t) G (TFun T1 fr1 a1 T2 fr2 a2 e2) (plift p1) frf af ef G T2 (por (plift p1)(plift p2)) ((frf||fr1)&&a2 || fr2) ((af||a1)&&a2) (e1 || ef || (af||a1)&&e2)
-| c_app2: forall t1 G T1 p2 a1 e1 fr1 T2 fr2 a2 e2 p1 frf af ef,
-    has_type G t1 (TFun T1 fr1 a1 T2 fr2 a2 e2) p1 frf af ef ->
-    ctx_type (fun x => tapp t1 x) G T1 (plift p2) fr1 a1 e1 G T2 (por (plift p1)(plift p2)) ((frf||fr1)&&a2 || fr2) ((af||a1)&&a2) (e1 || ef || (af||a1)&&e2)
-| c_abs: forall G T1 T2 p2 pf fr2 af fr1 a1 a2 e2,
-    pf = (qdiff p2 (qone (length G))) ->
-    env_cap G pf af ->
-    ctx_type (fun x => tabs x) ((T1, fr1, a1)::G) T2 (plift p2) fr2 a2 e2 G (TFun T1 fr1 a1 T2 fr2 a2 e2) (plift pf) false ((e2||a2)&&af) false
-| c_not: forall G t p fr a e,
-  has_type G t TBool p fr a e -> 
-  ctx_type (fun x => tnot x) G TBool (plift p) fr a e G TBool (plift p) false false e
-| c_bin1: forall G t1 p1 fr1 a1 e1 p2 fr2 a2 e2,
-    has_type G t1 TBool p1 fr1 a1 e1 ->
-    ctx_type (fun x => tbin t1 x) G TBool (plift p2) fr2 a2 e2 G TBool (por (plift p1) (plift p2)) false false (e1||e2)
-| c_bin2: forall G t2 p1 fr1 a1 e1 p2 fr2 a2 e2,
-    has_type G t2 TBool p2 fr2 a2 e2 ->
-    ctx_type (fun x => tbin x t2) G TBool (plift p1) fr1 a1 e1 G TBool (por (plift p1) (plift p2)) false false (e1||e2)    
-| c_sub_fresh: forall G T p fr a e,
-    ctx_type (fun x => x) G T p fr a e G T p true a e  
-| c_sub_cap: forall G T p fr a e,
-    ctx_type (fun x => x) G T p fr a e G T p fr true e  
-| c_sub_eff: forall G T p fr a e,
-    ctx_type (fun x => x) G T p fr a e G T p fr a true 
-| cx_trans: forall f g G1 p1 T1 fr1 a1 e1 G2 p2 T2 fr2 a2 e2 G3 p3 T3 fr3 a3 e3,
-    ctx_type f G1 T1 p1 fr1 a1 e1 G2 T2 p2 fr2 a2 e2 ->
-    ctx_type g G2 T2 p2 fr2 a2 e2 G3 T3 p3 fr3 a3 e3 ->
-    ctx_type (fun x => g (f x)) G1 T1 p1 fr1 a1 e1 G3 T3 p3 fr3 a3 e3
-.
-
-
-(* semantic equivalence between contexts *)
-Definition sem_ctx_type C C' G1 T1 p1 fr1 a1 e1 G2 T2 p2 fr2 a2 e2 :=
-  forall t t',
-    p1 = plift (fv (length G1) t) ->
-    p1 = plift (fv (length G1) t') ->
-    sem_type G1 t t' T1 p1 fr1 a1 e1 ->
-    p2 = plift (fv (length G2) (C t)) /\
-    p2 = plift (fv (length G2) (C' t')) /\
-    sem_type G2 (C t) (C' t') T2 p2 fr2 a2 e2.
-
-(* congruence *)
-Theorem congr:
-  forall C G1 T1 p1 fr1 a1 e1 G2 T2 p2 fr2 a2 e2,
-    ctx_type C G1 T1 p1 fr1 a1 e1 G2 T2 p2 fr2 a2 e2 ->
-    sem_ctx_type C C G1 T1 p1 fr1 a1 e1 G2 T2 p2 fr2 a2 e2.
-Proof. 
-  intros ? ? ? ? ? ? ? ? ? ? ? ? ? CX.
-  induction CX; intros ? ? PX1 PX2 ?.
-  - split. 2: split.
-    eauto. eauto. 
-    eauto.
-  - split. 2: split.
-    eauto. eauto.
-    intros u E ? ? ? ? ? WFE. 
-    intros STWF S1 S2 p1 p2 ST LS1 LS2.
-    eapply exp_ref; eauto. eapply H0; eauto.
-  - split. 2: split.
-    eauto. eauto.
-    intros u E ? ? ? ? ? WFE. 
-    intros STWF S1 S2 p1 p2 ST LS1 LS2.
-    eapply exp_get; eauto. eapply H0; eauto.
-    unfold bsub in *. intros ?. eapply E. destruct e; intuition. 
-    rewrite exp_locs_get in LS1. intros ? ?. eapply LS1. destruct e; destruct a; intuition.
-    rewrite exp_locs_get in LS2. intros ? ?. eapply LS2. destruct e; destruct a; intuition.
-  - split. 2: split.
-    simpl. eapply hast_fv in H. rewrite plift_or. congruence.
-    simpl. eapply hast_fv in H. rewrite plift_or. congruence. 
-    intros u E ? ? ? ? ? WFE. intros STWF S1 S2 q1 q2 ST LS1 LS2.
-    
-    eapply fundamental in H.  assert (env_type M H1 H2 V1 V2 G u (plift p1)) as WFE'. { eapply envt_tighten;eauto. unfoldq; intuition. }
-    eapply H in WFE' as A.
-    2: { unfold bsub in *. intros Q. eapply E. destruct e1; intuition. }
-    edestruct A as (S1' & S2' & M' & v1 & v2 & ?). auto. eapply ST.
-    intros ? ?. rewrite exp_locs_put in LS1. eapply LS1. destruct e1; try contradiction. simpl in *. left. auto. 
-    intros ? ?. rewrite exp_locs_put in LS2. eapply LS2. destruct e1; try contradiction. simpl in *. left. auto.
-    eapply exp_put; eauto. 
-    exists v1, v2.  eapply H3. destruct H3 as (? & ? & ? & ? & ?). intuition.
-    eapply H0.
-    unfold bsub in *. intros Q. eapply E. destruct e1, e2, a1;intuition. 
-    eapply envt_store_change. eapply envt_tighten. eapply WFE. unfoldq; intuition.
-    intros ? ? ? ? ?. eapply s. auto. destruct ST. destruct H8. lia. destruct ST. destruct H8. lia. auto.
-    auto.
-    intros ? ?. left. eapply LS1. rewrite exp_locs_put. destruct e2; try contradiction; destruct e1, a1; simpl; right; auto.
-    intros ? ?. left. eapply LS2. rewrite exp_locs_put. destruct e2; try contradiction; destruct e1, a1; simpl; right; auto.
-    
-  - split. 2: split.
-    simpl. eapply hast_fv in H. rewrite plift_or. congruence.
-    simpl. eapply hast_fv in H. rewrite plift_or. congruence. 
-    intros u E ? ? ? ? ? WFE. intros STWF S1 S2 q1 q2 ST LS1 LS2.
-    assert (env_type M H1 H2 V1 V2 G u (plift p1)) as WFE'. { eapply envt_tighten;eauto. unfoldq; intuition. }
-    
-    eapply H0 in WFE' as A. 
-    2: { unfold bsub in *. intros. subst e1; intuition.  }
-    edestruct A as (S1' & S2' & M' & v1 & v2 & ?). auto. eapply ST. 
-    intros ? ?. rewrite exp_locs_put in LS1. eapply LS1. destruct e1; try contradiction. simpl in *. left. auto. 
-    intros ? ?. rewrite exp_locs_put in LS2. eapply LS2. destruct e1; try contradiction. simpl in *. left. auto.
-    eapply exp_put; eauto. exists v1, v2. eapply H3.
-    destruct H3 as (? & ? & ? & ? & ?). intuition.
-    eapply fundamental in H. eapply H. 
-    unfold bsub in *. intros Q. eapply E. destruct e1, e2, a1; intuition.
-    eapply envt_store_change. eapply envt_tighten. eapply WFE. unfoldq; intuition.
-    intros ? ? ? ? ?. eapply s. auto. destruct ST, H8. lia. destruct ST, H8. lia. auto. auto.
-    intros ? ?. left. eapply LS1. rewrite exp_locs_put. destruct e2; try contradiction; destruct e1, a1; simpl; right; auto.
-    intros ? ?. left. eapply LS2. rewrite exp_locs_put. destruct e2; try contradiction; destruct e1, a1; simpl; right; auto.
-  - split. 2: split.
-    simpl. eapply hast_fv in H. rewrite plift_or. congruence.
-    simpl. eapply hast_fv in H. rewrite plift_or. congruence. 
-
-    intros u E ? ? ? ? ? WFE. intros STWF S1 S2 q1 q2 ST LS1 LS2.
-    assert (env_type M H1 H2 V1 V2 G u (plift p1)) as WFE'. { eapply envt_tighten;eauto. unfoldq; intuition. }
-    
-    edestruct H0 with (u := u) as (S1' & S2' & M' & ?).
-    unfold bsub in *. intros. eapply E. destruct e1, ef; intuition.
-    eauto. auto. eauto. 
-    intros ? ?. rewrite exp_locs_app in LS1. eapply LS1. destruct ef; try contradiction. destruct e1; simpl; left; auto.
-    intros ? ?. rewrite exp_locs_app in LS2. eapply LS2. destruct ef; try contradiction. destruct e1; simpl; left; auto.
-    eapply exp_app; eauto.  
-    destruct H3 as (v1 & v2 & ? & ? & ? & ? & ?). intuition.
-    eapply fundamental in H. eapply H.
-    unfold bsub in *. intros ?. eapply E. destruct e1; intuition.
-    eapply envt_store_change. eapply envt_tighten. eapply WFE.  unfoldq; intuition.
-    intros ? ? ? ? ?. eapply H3. auto. destruct ST. destruct H9. lia. destruct ST. destruct H9. lia. auto. auto.
-    intros ? ?. left. eapply LS1. rewrite exp_locs_app. destruct e1; try contradiction. simpl. right. auto.
-    intros ? ?. left. eapply LS2. rewrite exp_locs_app. destruct e1; try contradiction. simpl. right. auto.
-    unfold bsub in *. destruct e2, u, af, a1, a2; simpl in *; intuition.
-    unfold bsub in *. destruct e2, u, af, a1, a2; simpl in *; intuition.
-    unfold bsub in *. destruct e2, u, af, a1, a2; simpl in *; intuition.
-    unfold bsub in *. destruct e2, u, af, a1, a2; simpl in *; intuition. 
-  - split. 2: split.
-    simpl. eapply hast_fv in H. rewrite plift_or. congruence.
-    simpl. eapply hast_fv in H. rewrite plift_or. congruence. 
-
-    intros u E ? ? ? ? ? WFE. intros STWF S1 S2 q1 q2 ST LS1 LS2.
-    assert (env_type M H1 H2 V1 V2 G u (plift p2)) as WFE'. { eapply envt_tighten;eauto. unfoldq; intuition. }
-    
-    eapply fundamental in H. edestruct H with (u := u) as (S1' & S2' & M' & ?).  
-    unfold bsub in *. intros. eapply E. destruct e1, ef; intuition.
-    eapply envt_tighten. eapply WFE. unfoldq; intuition. auto. eauto.
-    intros ? ?. rewrite exp_locs_app in LS1. eapply LS1. destruct ef; try contradiction. destruct e1; simpl; left; auto.
-    intros ? ?. rewrite exp_locs_app in LS2. eapply LS2. destruct ef; try contradiction. destruct e1; simpl; left; auto.
-    eapply exp_app. all: auto. eauto. 
-    destruct H3 as (v1 & v2 & ? & ? & ? & ? & ?). intuition.
-    eapply H0.
-    unfold bsub in *. intros ?. eapply E. destruct e1; intuition.
-    eapply envt_store_change. eapply envt_tighten; eauto. unfoldq; intuition.
-    intros ? ? ? ? ?. eapply H3. auto. destruct ST, H9. lia. destruct ST, H9. lia. all: auto.
-    intros ? ?. left. eapply LS1. rewrite exp_locs_app. destruct e1; try contradiction. simpl. right. auto.
-    intros ? ?. left. eapply LS2. rewrite exp_locs_app. destruct e1; try contradiction. simpl. right. auto.
-    unfold bsub in *. destruct e2, u, af, a1, a2; simpl in *; intuition.
-    unfold bsub in *. destruct e2, u, af, a1, a2; simpl in *; intuition.
-    unfold bsub in *. destruct e2, u, af, a1, a2; simpl in *; intuition.
-    unfold bsub in *. destruct e2, u, af, a1, a2; simpl in *; intuition.  
-  - split. 2: split.
-    simpl. subst pf. rewrite plift_diff, plift_diff. simpl in *. congruence.
-    simpl. subst pf. rewrite plift_diff, plift_diff. simpl in *. congruence.
-   
-    eapply sem_abs; eauto.
-    simpl in *. rewrite plift_qual_eq. auto.
-    simpl in *. rewrite plift_qual_eq. congruence.
-
-  - split. 2: split.
-    simpl. eapply hast_fv in H. congruence.
-    simpl. eapply hast_fv in H. congruence.
-    intros  u E  ? ? ? ? ?  WFE. intros STW S1 S2 q1 q2 ST LS1 LS2.
-    eapply exp_tnot; eauto. eapply H0; eauto.
-    
-  - split. 2: split.
-    simpl. eapply hast_fv in H. rewrite plift_or. congruence.
-    simpl. eapply hast_fv in H. rewrite plift_or. congruence. 
-
-    intros u E ? ? ? ? ?  WFE. intros STW S1 S2 q1 q2 ST LS1 LS2.
-    eapply fundamental in H. 
-    edestruct H with (u := u) as (S1' & S2' & M' & ?).
-    unfold bsub in *. intros ?. eapply E. destruct e1; intuition. 
-    eapply envt_tighten; eauto. unfoldq; intuition. auto. eauto.
-    intros ? ?. eapply LS1. rewrite exp_locs_tbin. destruct e1; try contradiction. left. auto.
-    intros ? ?. eapply LS2. rewrite exp_locs_tbin. destruct e1; try contradiction. left. auto.
-    eapply exp_tbin; auto.
-    unfold bsub in *. intros ?. eapply E. auto.
-    eauto.
-    destruct H3 as (v1 & v2 & ? & ? & ? & ? & ? & ? & ? & ? & ?& ? & ?). intuition. 
-    eapply H0. 
-    unfold bsub in *. intros. eapply E. destruct e1, e2; intuition.
-    eapply envt_store_change. eapply envt_tighten. eapply WFE. unfoldq; intuition.
-    intros ? ? ? ? ?. eapply s. auto. destruct ST, s1. lia. destruct ST, s1. lia. auto. auto. 
-    intros ? ?. left. eapply LS1. rewrite exp_locs_tbin. destruct e2; try contradiction. destruct e1; simpl; right; auto.
-    intros ? ?. left. eapply LS2. rewrite exp_locs_tbin. destruct e2; try contradiction. destruct e1; simpl; right; auto.
-  - split. 2: split.
-    simpl. eapply hast_fv in H. rewrite plift_or. congruence.
-    simpl. eapply hast_fv in H. rewrite plift_or. congruence.
-
-    intros u E ? ? ? ? ? WFE. intros STWF S1 S2 q1 q2 ST LS1 LS2.
-    edestruct H0 as (S1' & S2' & M' & ?). 
-    unfold bsub in *. intros. eapply E. destruct e1; intuition.
-    eapply envt_tighten; eauto. unfoldq; intuition. auto. eauto.
-    intros ? ?. eapply LS1. rewrite exp_locs_tbin. destruct e1; try contradiction. left. auto.
-    intros ? ?. eapply LS2. rewrite exp_locs_tbin. destruct e1; try contradiction. left. auto.
-    eapply exp_tbin; auto.
-    unfold bsub in *. intros. eapply E. auto.
-    eauto. 
-    destruct H3 as (v1 & v2 & ? & ? & ? & ? & ? & ?). intuition.
-    eapply fundamental in H. eapply H. 
-    unfold bsub in *. intros. eapply E. destruct e1, e2; intuition.
-    eapply envt_store_change. eapply envt_tighten. eapply WFE. unfoldq; intuition.
-    intros ? ? ? ? ?. eapply s. auto. destruct ST, H7. lia. destruct ST, H7. lia. auto. auto. 
-    intros ? ?. left. eapply LS1. rewrite exp_locs_tbin. destruct e2; try contradiction. destruct e1; simpl; right; auto.
-    intros ? ?. left. eapply LS2. rewrite exp_locs_tbin. destruct e2; try contradiction. destruct e1; simpl; right; auto.
-  - split. 2: split. eauto. eauto. 
-    intros u E ? ? ? ? ? WFE. intros STWF S1 S2 q1 q2 ST LS1 LS2. eapply exp_sub_fresh; eauto. eapply H; eauto.
-  - split. 2: split. eauto. eauto.
-    intros u E ? ? ? ? ? WFE. intros STWF S1 S2 q1 q2 ST LS1 LS2. eapply exp_sub_cap; eauto. eapply H; eauto.
-  - split. 2: split. eauto. eauto.
-    intros u E ? ? ? ? ? WFE. intros STWF S1 S2 q1 q2 ST LS1 LS2. eapply exp_sub_eff; eauto. eapply H; eauto.
-    unfold bsub in *. intros. eapply E. auto.
-    intros ? ?. destruct e; try contradiction. eapply LS1. auto.   
-    intros ? ?. destruct e; try contradiction. eapply LS2. auto.
-  - edestruct IHCX1 as (PY1 & PY2 & ?). eapply PX1. eapply PX2. eauto.
-    edestruct IHCX2 as (?&?&?). eapply PY1. eapply PY2. eauto. 
-    split. 2: split. eauto. eauto.
-    eauto.
-Qed.
-
-
 Lemma adequacy: forall t t' p fr a e,
   sem_type [] t t' TBool p fr a e ->
   exists S S' v,
@@ -4163,37 +4520,6 @@ Proof.
   eexists. eexists. eexists. split; eauto.
 Qed.
 
-(* contextual equivalence: no boolean context can detect a difference *)
-Definition contextual_equiv G t1 t2 T1 p1 fr1 a1 e1 :=
-  forall C,
-    ctx_type C G T1 p1 fr1 a1 e1 [] TBool pempty false true true ->
-    exists S1 S2 v,
-      tevaln [] [] (C t1) S1 v /\
-      tevaln [] [] (C t2) S2 v.
-
-(* soundness of binary logical relation: implies contextual equivalence *)
-Theorem soundess: forall G t1 t2 T p fr a e,
-  p = plift (fv (length G) t1) ->
-  p = plift (fv (length G) t2) ->
-  sem_type G t1 t2 T p fr a e ->
-  contextual_equiv G t1 t2 T p fr a e.
-Proof.
-  intros. intros ? ?.
-  eapply adequacy.
-  eapply congr; eauto.
-Qed. 
-
-
-(* ---------- LR effect interpretation  ---------- *)
-
-(* store invariance:
-   - every pure expression can be evaluated in empty stores
-     (in fact arbitrary S1, S2), to equivalent values.
-   - the store has to be large enough, so that new
-     allocations don't conflict
-   - impure expressions tolerate changes to locations
-     they can't observe
- *)
 
 
 Theorem store_invariance2': forall t G T p fr a e
@@ -4271,11 +4597,6 @@ Proof.
   unfoldq. intuition.
 Qed.
 
-Lemma pif_false: forall p,
-  pif false p = pempty.
-Proof.
-  intros. eapply functional_extensionality. intros. simpl. auto.
-Qed.
 
 Lemma exp_locs_decide: forall V t l,
     exp_locs V t l \/ ~ exp_locs V t l.
@@ -4463,8 +4784,8 @@ Proof.
 Qed.
 
 Theorem reorder_tbin_eff: forall G t1 t2 p1 p2 a1 a2 fr1 fr2
-  (W1: has_type G t1 TBool p1 fr1 a1 true)   
-  (W2: has_type G t2 TBool p2 fr2 a2 false), 
+  (W1: has_type G t1 TBool p1 fr1 a1 true)   (* effect *)
+  (W2: has_type G t2 TBool p2 fr2 a2 false), (* no eff *)
   sem_type G (tbin t1 t2) (tbin t2 t1) TBool (por (plift p1) (plift p2)) false false true.
 Proof.
   intros. intros uv E M H1 H2 V1 V2 WFE. intros SW ???? ST ELS1 ELS2.
@@ -4594,6 +4915,159 @@ Proof.
     eapply storew_widen. eauto. intros ??. right. eauto. eauto.
 Qed.
 
+Theorem reorder_tbin_eff': forall G t1 t2 p1 p2 a1 a2 fr1 fr2
+  (W1: has_type G t1 TBool p1 fr1 a1 false)   (* no eff *)
+  (W2: has_type G t2 TBool p2 fr2 a2 true), (* effect *)
+  sem_type G (tbin t1 t2) (tbin t2 t1) TBool (por (plift p1) (plift p2)) false false true.
+Proof.
+  intros. intros uv E M H1 H2 V1 V2 WFE. intros SW ???? ST ELS1 ELS2.
+
+  assert (length V1 = length G) as LV1. { destruct WFE as (? & ? & ? & ? & ?). auto. }
+  assert (length V2 = length G) as LV2. { destruct WFE as (? & ? & ? & ? & ?). auto. }
+  destruct uv; intuition. 
+
+  (* t1 *)
+  eapply fundamental in W1 as HE1.
+  edestruct (HE1 false) as (S1' & S2' & M' & v1 & v1' & uv1 & lsv1 & lsv2 & STC' & STWF' & E1 & E1' & LS1 & LS2 & ST' & VT1 & UX1 & UX2 & LUX1 & LUX2 & VQ1 & VQ2 & SE1 & SE1' & STREL1).
+  unfold bsub. intuition.
+  eapply envt_strengthenW1. eapply envt_tighten. eauto. unfoldq; intuition. eauto. eauto. 
+  unfoldq; intuition. unfoldq; intuition.
+
+  assert (st_len1 M <= st_len1 M') as L1. { destruct ST. destruct ST'. lia. }
+  assert (st_len2 M <= st_len2 M') as L2. { destruct ST. destruct ST'. lia. }
+ 
+
+  (* t2 *)
+  eapply store_invariance2' with (uv:=true) in W2 as W2'.
+  destruct W2' as (S1'' & S2y'' & M'' & v2 & v2x & uv2 & lsv2' & lsv2x & W2').
+  4: eapply SW.
+  4: { eauto. }
+  all: eauto. 
+  2: { eapply envt_store_change. eapply envt_tighten. eauto. unfoldq. intuition.
+       intros ?????. eauto. eauto. eauto. }
+  2: { intros ? ?. eapply ELS1. rewrite exp_locs_tbin. right. eauto. }
+  2: { intros ? ?. eapply ELS2. rewrite exp_locs_tbin. left. eauto. }
+  2: { eapply storew_widen. eapply SE1. intros ?; intuition. }
+
+  destruct W2' as (STC'' & STWF2 & E2' & E2 & LS1' & LS2' & ST'' & VT'' & UX3 & UX4 & LUX3 & LUX4 & VQ3 & VQ4 & SE2' & SE2 & STREL2).
+
+  (* t1 *)
+  eapply store_invariance3' with (uv:=false)(H1:=H1) (H2:=H2) (p1:=pempty) (p2:=pempty) in W1 as W1'.
+  destruct W1' as (S1y' & S2'' & M''' & v1y & v1z & u1y & lsv1y & lsvz & W1').
+  4: eapply SW.
+  4: { destruct ST as (?&?&?). split. eauto. split. eauto. intros. contradiction. }
+  all: eauto. 
+  2: { unfold bsub. intuition. }
+  2: { eapply envt_store_change. eapply envt_strengthenW1. eapply envt_tighten. eauto. unfoldq. intuition.
+       intros ?????. eauto. eauto. eauto. }
+  2: { unfoldq; intuition. }
+  2: { unfoldq; intuition. }
+  2: { eapply storew_widen. eapply SE2. unfoldq; intuition. }
+
+  destruct W1' as (STC''' &  STWF''' & E1y & E2'' & LS1y & LS2'' & ST''' & VT''' & UX5 & UX6 & LUX5 & LUX6 & VQ5 & VQ6 & SE1y & SE2'' & STREL''').
+
+
+  assert (S1y' = S1' /\ v1 = v1y) as C. {
+    destruct E1 as [n1 E1].
+    destruct E1y as [n1x E1y].
+    assert (1+n1+n1x > n1) as A1. lia.
+    assert (1+n1+n1x > n1x) as A1x. lia. 
+    specialize (E1 _ A1).
+    specialize (E1y _ A1x).
+    rewrite E1 in E1y. 
+    split; congruence.
+  }
+  destruct C. subst v1y S1y'.
+
+  destruct v1; destruct v1'; destruct v1z; simpl in VT1; simpl in VT'''; intuition. subst b0 b1.
+  destruct v2; destruct v2x; simpl in VT''; intuition. subst b0.
+
+  assert (tevaln S1 H1 (tbin t1 t2) S1'' (vbool (b && b1))). {
+    destruct E1 as [n1 E1].
+    destruct E2' as [n1' E1''].
+    exists (1+n1+n1'). intros.
+    destruct n. lia. simpl.
+    rewrite E1, E1''. eauto. lia. lia. 
+  }
+  assert (tevaln S2 H2 (tbin t2 t1) S2'' (vbool (b1 && b))). {
+    destruct E2 as [n1 E2].
+    destruct E2'' as [n1' E2''].
+    exists (1+n1+n1'). intros.
+    destruct n. lia. simpl.
+    rewrite E2, E2''. eauto. lia. lia. 
+  }
+
+  eexists S1'', S2'', (length S1'', length S2'', strel M), _, _, _, _, _.
+  split. 2: split. 3: split. 4: split. 5: split. 6: split. 7: split. 8: split. 9: split. 10: split.
+  11: split. 12: split. 13: split. 14: split. 15: split. 16: split. 17: split. 
+  - intros ???. eauto. 
+  - destruct SW as (SW1 & SW2 & SW3).
+    destruct ST as (?&?&?).
+    destruct ST' as (?&?&?).
+    destruct ST'' as (?&?&?).
+    unfold stty_wellformed. 
+    unfold st_len1, st_len2. simpl. split. 2: split.
+    intros ? ? C. eapply SW1 in C. destruct C. split; lia.
+    eauto. eauto. 
+  - eauto.
+  - eauto.
+  - lia.
+  - lia.
+  - destruct SW as (SW1 & SW2 & SW3).
+    destruct ST as (?&?&ST).
+    destruct ST' as (?&?&ST').
+    destruct ST'' as (?&?&ST'').
+    destruct ST''' as (?&?&ST''').
+    unfold store_type.
+    unfold st_len1, st_len2. simpl. split. 2: split. 
+    eauto. eauto. simpl in H, H0, H3.
+    intros ?? SR P0 P3.
+    destruct P0 as [P0|P0]. 2: { eapply SW1 in SR. unfoldq. intuition. }
+    destruct P3 as [P3|P3]. 2: { eapply SW1 in SR. unfoldq. intuition. }
+    assert (strel M' l1 l2) as SR'. eauto.
+    assert (strel M'' l1 l2) as SR''. eauto. 
+    assert (strel M''' l1 l2) as SR'''. eauto. 
+    edestruct ST as (?&?&?); eauto. 
+    edestruct ST' as (?&?&?); eauto. left. eauto. left. eauto.
+    edestruct ST'' as (?&?&?); eauto. left. eauto. left. eauto.
+    rewrite SE1y in H11. 2: { unfoldq. intuition. eapply indexr_var_some'. eauto. }
+    rewrite H11 in H13. inversion H13. subst x0.
+    exists x1. intuition. 
+    rewrite SE2'' in H16. auto.
+    unfoldq. intuition. eapply indexr_var_some'. eauto.
+  - simpl. destruct b,b1; eauto.
+  - eauto.
+  - eauto.
+  - intros ???. rewrite <-plift_empty. eauto.
+  - intros ???. rewrite <-plift_empty. eauto.
+  - rewrite plift_empty. unfoldq. intuition.
+  - rewrite plift_empty. unfoldq. intuition. 
+  - rewrite exp_locs_tbin. eapply storew_trans.
+    eapply storew_widen. eauto. intros ??. unfoldq; intuition.
+    eapply storew_widen. eauto. unfoldq. intuition. eauto.
+  - rewrite exp_locs_tbin. eapply storew_trans.
+    eapply storew_widen. eauto. unfoldq. intuition. 
+    eapply storew_widen. eauto. unfoldq; intuition. lia. 
+Qed.
+
+
+Theorem reorder_tbin: forall G t1 t2 p1 p2 a1 a2 fr1 fr2 e1 e2
+  (W1: has_type G t1 TBool p1 fr1 a1 e1)   
+  (W2: has_type G t2 TBool p2 fr2 a2 e2), 
+  e1 && e2 = false ->
+  sem_type G (tbin t1 t2) (tbin t2 t1) TBool (por (plift p1) (plift p2)) false false true.
+Proof.
+  intros.
+  destruct e1, e2.
+  - simpl in *. inversion H.
+  - eapply reorder_tbin_eff; eauto.
+  - eapply reorder_tbin_eff'; eauto.
+  - assert (sem_type G (tbin t1 t2) (tbin t2 t1) TBool (por (plift p1) (plift p2)) false false false).
+    eapply reorder_tbin_mention; eauto.
+    eapply sem_sub_eff; eauto. unfold bsub. intuition.
+Qed.
+
+
 
 Lemma pure_typing_ex1 : forall G p,
   sem_type G (tget (tref ttrue)) (tget (tref ttrue)) TBool p false false false.
@@ -4627,6 +5101,7 @@ Proof.
   - intros ? Q. rewrite indexr_skips. eauto. unfoldq. intuition.
   - intros ? Q. rewrite indexr_skips. eauto. unfoldq. intuition. 
 Qed.
+
 
 Lemma pure_typing_ex1_static : forall G, 
   has_type G (tget (tref ttrue)) TBool qempty false false false.
@@ -4670,9 +5145,6 @@ Fixpoint subst_tm (t: tm)(i: nat) (u:tm) : tm :=
   | tnot t        => tnot (subst_tm t i u)
   | tbin t1 t2    => tbin (subst_tm t1 i u)(subst_tm t2 i u)
 end.
-
-(* We don't have locally nameless here, just regular DeBruijn levels. This 
-   means substitution under binders (i.e. tabs) needs to shift the term by 1 *)
 
 Definition subst_ql (p: pl) (i: nat) :=
   fun x => (if x <? i then p x else p (x + 1)).
@@ -4761,7 +5233,7 @@ Proof.
   unfoldq. unfold subst_ql. 
   bdestruct (x <? L); intuition.
 Qed.
-
+  
 
 Lemma splice_acc: forall e1 a b c,
   splice_tm (splice_tm e1 a b) a c =
@@ -5040,6 +5512,7 @@ Proof.
 Qed.
 
 
+
 Lemma exp_locs_subst': forall t2 t1 v (H2' H2: lenv) l2,
     exp_locs H2 t1 l2 ->
     plift (fv (length (H2' ++ v::H2)) t2) (length H2) ->
@@ -5055,68 +5528,7 @@ Proof.
   eauto.
   eexists. split. rewrite indexr_skips. eauto. eauto. eauto. 
 Qed.
-  
 
-Lemma exp_locs_subst'': forall t t1 v H2 H2',
-    psub (exp_locs (H2'++ v::H2) t) pempty ->
-    (plift (fv (length (H2'++ v::H2)) t) (length H2) ->
-     psub (exp_locs H2 t1) pempty) ->
-    psub (exp_locs (H2' ++ H2)
-            (subst_tm t (length H2)
-               (splice_tm t1 (length H2) (length H2')))) pempty.
-Proof.
-  intros t. induction t; eauto.
-  - intros. unfold exp_locs in *. simpl in *.
-    rewrite plift_empty, vl_empty. unfoldq. intuition. 
-  - intros. unfold exp_locs in *. simpl in *.
-    rewrite plift_empty, vl_empty. unfoldq. intuition. 
-  - intros. simpl. bdestruct (length H2 =? i).
-    + unfold exp_locs in H0 at 1. simpl in *.
-      rewrite plift_one in *. intros ? Q. eapply H0. intuition.
-      replace (H2'++H2) with ([]++H2'++H2) in Q. 
-      rewrite exp_locs_shift in Q. 2: simpl; eauto. eapply Q.
-    + bdestruct (length H2 <? i).
-      * destruct i. lia.
-        simpl in *. intros ? Q. eapply H. erewrite <-exp_locs_shift with (HX:=[v]) in Q.
-        simpl in Q. bdestruct (i <? length H2). lia.
-        replace (S i) with (i+1). eauto. lia.
-      * intros ? Q. eapply H.
-        erewrite <-exp_locs_shift with (HX:=[v]) in Q.
-        simpl in Q. bdestruct (i <? length H2). 2: lia.
-        eauto.
-  - intros. simpl in *. rewrite plift_or in *.
-    rewrite exp_locs_put in *. intros ? Q. destruct Q.
-    eapply IHt1. intros ? Q. eapply H. left. eauto. intros.
-    eapply H0. left. eauto. eauto. eauto. 
-    eapply IHt2. intros ? Q. eapply H. right. eauto. intros.
-    eapply H0. right. eauto. eauto.
-  - intros. simpl in *. rewrite plift_or in *.
-    rewrite exp_locs_app in *. intros ? Q. destruct Q.
-    eapply IHt1. intros ? Q. eapply H. left. eauto. intros.
-    eapply H0. left. eauto. eauto. eauto. 
-    eapply IHt2. intros ? Q. eapply H. right. eauto. intros.
-    eapply H0. right. eauto. eauto.
-  - intros. simpl in *. rewrite plift_diff, plift_one in *.
-    intros ? Q. eapply IHt with (H2':=qempty::H2'). simpl.
-    intros ? Q1. eapply H. eapply exp_locs_abs in Q1.
-    destruct Q1. eauto. rewrite plift_empty in H1. contradiction.
-    intros. eapply H0. split. eapply H1. unfoldq.
-    rewrite app_length. simpl. lia. 
-    rewrite splice_acc in Q. simpl.
-    unfold exp_locs in Q. unfold exp_locs. simpl in *.
-    rewrite plift_diff, plift_one in Q. 
-    destruct Q as (?&?&?).
-    eexists. split. eapply H1. destruct H3 as (?&?&?).
-    eexists. split. rewrite indexr_skip. eauto.
-    eapply indexr_var_some' in H3. lia.
-    eauto. 
-  - intros. simpl in *. rewrite plift_or in *.
-    rewrite exp_locs_tbin in *. intros ? Q. destruct Q.
-    eapply IHt1. intros ? Q. eapply H. left. eauto. intros.
-    eapply H0. left. eauto. eauto. eauto. 
-    eapply IHt2. intros ? Q. eapply H. right. eauto. intros.
-    eapply H0. right. eauto. eauto.
-Qed.
 
 Lemma encap_subst: forall G' T0 a0 G pf af, 
   env_cap (G' ++ (T0, false, a0) :: G) pf af ->
@@ -5421,7 +5833,22 @@ Proof.
     unfold bsub in *. intuition. 
     unfoldq. intuition.
     unfoldq. intuition.
+  - unfold bsub in *. 
+
+    edestruct (IHW u M H3 H4 H2') with (VX := VX) as (S1' & S2' & M' & HX1); eauto.
+    {
+      intros ? ?. eapply P1. destruct e1, e2; try contradiction; intuition.
+    }
+
+    {
+      intros ? ?. eapply P2. destruct e1, e2; try contradiction; intuition.
+    }
+    destruct HX1 as (vy1 & vy2 & uy & lsy1 & lsy2 &?).
+    exists S1', S2', M', vy1, vy2, (negb a2||u), (if (negb a2 || u) then lsy1 else qempty), (if (negb a2 || u) then lsy2 else qempty). 
+    eapply exp_sub_stp2; eauto.
+    eapply stp_fundamental in H. eapply H.  
 Qed.
+
 
 Lemma tevaln_unique: forall S1 S1' S1'' H1 e1 v1 v1',
     tevaln S1 H1 e1 S1' v1 ->
@@ -5545,13 +5972,13 @@ Lemma st_weaken1: forall t1 T1 G p a e
           store_write S2X (S2') 
             (pif e (exp_locs (restrictV u (V2'++VX++V2)) (splice_tm t1 (length V2) (length VX)))).
 Proof.
-  intros ??????????????????? WFE LH2 E SW ST EP1 EP2.
+  intros ??????????????????? WFE LH2 E SW ST EP1 EP2 (* LU2 *).
   assert (exp_type S01 S02 M H1 (H2'++H2) V1 (V2'++V2) t1 t1 T1 u p1 p2 false a e) as HX. eapply fundamental; eauto.
 
   destruct ST as (L1 & L2 & ST).
   destruct HX as (S1' & S2' & M' & v1 & v2 & uv & ls1 & ls2 & HX).
   destruct HX as (SC' & SW' & TX1 & TX2 & LS1 & LS2 & ST' & VT & LX1 & LX2 & ES1 & ES2 & VQ1 & VQ2 & SE1 & SE2 & ESM).
-  
+
   remember (qor (qif a (exp_locs_fix (restrictV (u&&a) V1) t1))
               (qif false (qdiff (qdom S1') (qdom S01)))) as lsu1. 
   
@@ -5595,15 +6022,14 @@ Proof.
   edestruct W' as (S1X' & S2X' & MX'' & v1' & v2' & u' & ls1' & ls2' & W''). eauto. eauto. eauto.
   rewrite exp_locs_shift. eauto. 
   destruct W'' as (SC2' & SW2' & TX1' & TX2' & LS1' & LS2' & ST2' & VX' & LX1' & LX2' & ES1' & ES2' & VQ1' & VQ2' & SE1' & SE2' & ESM'). 
-
-    
+  
   exists u', S2X', v2', ls2'. 
 
   assert (S1' = S1X' /\ v1 = v1') as R. {
     eapply tevaln_unique. eauto. eauto. }
 
   destruct R as (R1 & R2). rewrite R2. 
-  
+
   split. 2: split. 3: split. 4: split. 5: split. 6: split. 7: split. 
 
   rewrite LH2, LHX. eauto. 
@@ -5658,68 +6084,9 @@ Proof.
   destruct H0. unfoldq; intuition. unfoldq; intuition.
 Qed.
 
-Lemma exp_locs_subst''': forall t t1 ls2 V2' V2,
-  psub (exp_locs (V2'++ls2::V2) t) pempty ->
-  (~plift (fv (length (V2'++ls2::V2)) t) (length V2)) ->
-  psub (exp_locs (V2'++V2) 
-         (subst_tm t (length V2)
-           (splice_tm t1 (length V2) (length V2')))) pempty.
-Proof.
-  intros t. induction t; eauto.
-  - intros. unfold exp_locs in *. simpl in *.
-    rewrite plift_empty.  rewrite vars_locs_empty. unfoldq; intuition.
-  - intros. unfold exp_locs in *. simpl in *. rewrite plift_empty, vars_locs_empty. unfoldq; intuition.
-  - intros. simpl in *. rewrite plift_one in H0. unfold pone in H0.
-    bdestruct (length V2 =? i); intuition.
-    bdestruct (length V2 <? i).
-    + destruct i. lia.
-      simpl in *. intros ? Q. eapply H.
-      erewrite <- exp_locs_shift with (HX := [ls2]) in Q.
-      simpl in Q. bdestruct (i <? length V2). lia.
-      replace (S i) with (i+1). eauto. lia.
-    + intros ? Q. eapply H.
-      erewrite <- exp_locs_shift with (HX := [ls2]) in Q.
-      simpl in Q. bdestruct (i <? length V2). 2: lia.
-      eauto.
-  - intros. simpl in *. rewrite plift_or in *.
-    rewrite exp_locs_put in *. intros ? Q. destruct Q.
-    eapply IHt1. intros ? Q. eapply H. left. eauto. intros ?.
-    eapply H0. left. eauto. eauto.  
-    eapply IHt2. intros ? Q. eapply H. right. eauto. intros ?.
-    eapply H0. right. eauto. eauto.
-  - intros. simpl in *. rewrite plift_or in *.
-    rewrite exp_locs_app in *. intros ? Q. destruct Q.
-    eapply IHt1. intros ? Q. eapply H. left. eauto. intros ?.
-    eapply H0. left. eauto. eauto.  
-    eapply IHt2. intros ? Q. eapply H. right. eauto. intros ?.
-    eapply H0. right. eauto. eauto.
-  - intros. simpl in *. rewrite plift_diff, plift_one in *.
-    intros ? Q. eapply IHt with (V2':=qempty::V2'). simpl.
-    intros ? Q1. eapply H. eapply exp_locs_abs in Q1.
-    destruct Q1. eauto. rewrite plift_empty in H1. contradiction.
-    intros ?. eapply H0. split. eapply H1. unfoldq.
-    rewrite app_length. simpl. lia. 
-    rewrite splice_acc in Q. simpl.
-    unfold exp_locs in Q. unfold exp_locs. simpl in *.
-    rewrite plift_diff, plift_one in Q. 
-    destruct Q as (?&?&?).
-    eexists. split. eapply H1. destruct H2 as (?&?&?).
-    eexists. split. rewrite indexr_skip. eauto.
-    eapply indexr_var_some' in H2. lia.
-    eauto. 
-  - intros. simpl in *. rewrite plift_or in *.
-    rewrite exp_locs_tbin in *. intros ? Q. destruct Q.
-    eapply IHt1. intros ? Q. eapply H. left. eauto. intros ?.
-    eapply H0. left. eauto. eauto.  
-    eapply IHt2. intros ? Q. eapply H. right. eauto. intros ?.
-    eapply H0. right. eauto. eauto.
-Qed.
-
 
 
 (* Full substitution only works for pure expressions, which are store-invariant. *)
-
-
 Lemma st_subst': forall t2 p fr a e T2 G0
   (W: has_type G0 t2 T2 p fr a e),
   forall G' G T1 a1, G0 = G'++(T1,false,a1)::G ->
@@ -5735,7 +6102,7 @@ Lemma st_subst': forall t2 p fr a e T2 G0
     forall HX VX S2X,
       length HX = length VX ->
       st_len2 M <= length S2X ->
-      exists uv (S2':stor) v2 ls2, (* via st_weaken *)
+      exists uv (S2':stor) v2 ls2, 
         (tevaln S2X (HX++H2) (splice_tm t1 (length H2) (length HX)) (S2') v2) /\
         length S2X <= length S2' /\
         (uv = negb a1 || u) /\
@@ -5991,11 +6358,8 @@ Proof.
           }
         }
         
-        
-
     {
       intros ?????. eapply H3. eauto. auto.
-    
       rewrite <-subst_ql_qql in *. simpl in *.
       assert (length V1' = length G') as LV1'. destruct WFE as (?&?&?&?).
       repeat rewrite app_length in *. simpl in *. lia.
@@ -6024,9 +6388,8 @@ Proof.
       repeat rewrite app_length in *. simpl in *. lia.
       eapply hast_fv in W. 
       subst pf p2.
-
       unfold exp_locs. simpl in *.
-      rewrite plift_diff, plift_one in *.   
+      rewrite plift_diff, plift_one in *.
 
       rewrite subst_ql_diff in H26.
       rewrite LV2 in H26. rewrite LV2, LV2'.
@@ -6237,7 +6600,6 @@ Proof.
     subst env.
 
     eapply exp_mentionable1; eauto.
-
     simpl in *.
     
     edestruct IHW with (M := M') (H1':=(vx1::H1')) (H2':=(vx2::H2')) (V1':=(restrictV false (lsx1 :: V1'))) (V2':=restrictV false (lsx2 :: V2')) (G':=((T1,fr1, a1)::G'))(u := false)
@@ -6495,6 +6857,13 @@ Proof.
     unfold bsub. intuition.
     unfoldq. intuition.
     unfoldq. intuition.
+  - unfold bsub in *. subst env.
+     edestruct IHW as (S1'&S2'&M'&?&?&?&?&?&?). all: eauto.
+     { intros ? ?. eapply P1. destruct e1, e2; try contradiction; intuition. }
+     { intros ? ?. eapply P2. destruct e1, e2; try contradiction; intuition. }
+     exists S1', S2', M', x, x0, (negb a2 || u), (if (negb a2 || u) then x2 else qempty), (if (negb a2 || u) then x3 else qempty).
+     eapply exp_sub_stp2; eauto. 
+     eapply stp_fundamental in H. eapply H. 
 Qed.
 
 
@@ -6548,13 +6917,9 @@ Proof.
 Qed.
 
 
-(* unrestricted form: t1 allows mention of any capabilities.
-   This no longer has the "p = empty" restriction in RT LR paper.
-   (previously required by st_subst) *)
-
-Lemma beta_equivalence: forall t1 t2 G T1 T2 pt1 pt2 fr a a1 e af,
+Lemma beta_equivalence': forall t1 t2 G T1 T2 pt1 pt2 fr a a1 e af,
   has_type ((T1,false,a1)::G) t2 T2 (qor pt1 (qone (length G))) fr a e -> 
-  has_type G t1 T1 pt2 false a1 false -> 
+  has_type G t1 T1 pt2 false a1 false -> (* fr1 = false and e1 = false required! *)
   env_cap G pt1 af ->
   psub (plift pt1) (pdom G) ->
   psub (plift pt2) (pdom G) ->
@@ -6737,6 +7102,114 @@ Proof.
     + intros ? (Q1 & Q2). rewrite EYS2. eauto. rewrite splice_zero. split; eauto. 
     + intuition. subst fr. eauto.
 Qed.
+
+Corollary beta_equivalence: forall t1 t2 G T1 T2 pt1 pt2 fr a a1 e,
+  has_type ((T1,false,a1)::G) t2 T2 (qor pt1 (qone (length G))) fr a e -> 
+  has_type G t1 T1 pt2 false a1 false -> (* fr1 = false and e1 = false required! *)
+  psub (plift pt1) (pdom G) ->
+  psub (plift pt2) (pdom G) ->
+  sem_type G (tapp (tabs t2) t1) (subst_tm t2 (length G) t1) T2 (por (plift pt1) (plift pt2)) fr a e.
+Proof. 
+  intros. eapply beta_equivalence' with (af := true); eauto.
+  intros ? ? ? ?. unfold bsub. auto.
+Qed.  
+
+Lemma tbin_inversion1: forall env t T p e
+  (W: has_type env t T p false false e),
+  forall t1 t2,
+    t = tbin t1 t2 ->
+    T = TBool ->
+  exists p1 fr1 a1 e1, 
+    psub (plift p1) (plift p) /\ 
+    bsub e1 e /\
+    has_type env t1 TBool p1 fr1 a1 e1.
+Proof.
+  intros env t T p e W. 
+  induction W; intros.
+  - inversion H.
+  - inversion H.
+  - inversion H0.
+  - inversion H.
+  - inversion H.
+  - inversion H.
+  - inversion H.
+  - inversion H1.
+  - inversion H.
+  - inversion H. subst t0 t3.
+    exists p1. exists fr1. exists a1. exists e1.
+    split.  2: split.
+    -- rewrite plift_or. unfoldq; intuition.
+    -- unfold bsub. intros. subst e1. simpl. auto.
+    -- auto.
+  - eapply IHW in H; auto.
+  - eapply IHW in H; auto.
+  - eapply IHW in H; eauto. 
+    destruct H as (p1 & fr1 & a1 & e1 & ? & ? & ?).
+    exists p1, fr1, a1, e1. 
+    split. 2: split.
+    -- auto.
+    -- unfold bsub. auto.
+    -- auto.
+  - eapply IHW in H3; eauto.  
+    2: { 
+      subst T2. inversion H. auto.
+    }
+    destruct H3 as (p1' & fr1' & a1' & e1' & ? & ? & ?).
+    exists p1', fr1', a1', e1'. 
+    split. 2: split.
+    -- auto.
+    -- unfold bsub. auto.
+    -- auto.
+Qed.
+
+
+Lemma tbin_inversion2: forall env t T p e
+  (W: has_type env t T p false false e),
+  forall t1 t2,
+    t = tbin t1 t2 ->
+    T = TBool ->
+  exists p2 fr2 a2 e2, 
+    psub (plift p2) (plift p) /\ 
+    bsub e2 e /\
+    has_type env t2 TBool p2 fr2 a2 e2.
+Proof.
+  intros env t T p e W. 
+  induction W; intros.
+  - inversion H.
+  - inversion H.
+  - inversion H0.
+  - inversion H.
+  - inversion H.
+  - inversion H.
+  - inversion H.
+  - inversion H1.
+  - inversion H.
+  - inversion H. subst t0 t3.
+    exists p2, fr2, a2, e2. 
+    split. 2: split.
+    -- rewrite plift_or. unfoldq; intuition.
+    -- unfold bsub. intros. destruct e1; simpl; auto.
+    -- auto.
+  - eapply IHW in H; auto.
+  - eapply IHW in H; auto.
+  - eapply IHW in H; auto.
+    destruct H as (p2' & fr2' & a2' & e2' & ? & ? & ?).
+    exists p2', fr2', a2', e2'. 
+    split. 2: split.
+    -- auto.
+    -- unfold bsub. auto.
+    -- auto.
+  - eapply IHW in H3; eauto.  
+    2: { 
+      subst T2. inversion H. auto.
+    }
+    destruct H3 as (p2' & fr2' & a2' & e2' & ? & ? & ?).
+    exists p2', fr2', a2', e2'. 
+    split. 2: split.
+    -- auto.
+    -- unfold bsub. auto.
+    -- auto.
+Qed. 
 
 
 End STLC.

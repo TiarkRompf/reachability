@@ -1,5 +1,5 @@
-Require Export Arith.EqNat.
-Require Export Arith.Le.
+Require Import Arith.EqNat. 
+Require Import Arith.PeanoNat.
 Require Import Coq.Bool.Bool.
 Require Import Coq.Arith.Arith.
 
@@ -8,7 +8,7 @@ Require Import Coq.Arith.Arith.
 Lemma beq_reflect : forall x y, reflect (x = y) (x =? y).
 Proof.
   intros x y.
-  apply iff_reflect. symmetry. apply beq_nat_true_iff.
+  apply iff_reflect. symmetry. apply Nat.eqb_eq.
 Qed.
 
 

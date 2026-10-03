@@ -61,24 +61,24 @@ Yuyan Bao, Songlin Jia, Guannan Wei, Oliver Bračevac, Tiark Rompf
 Haotian Deng, Siyuan He, Songlin Jia, Yuyan Bao, Tiark Rompf
 ([pdf](https://dl.acm.org/doi/pdf/10.1145/3763172)).
 
-[6] **Escape with Your Self: Expressive Reachability Types with Sound and Decidable Bidirectional Type Checking** (Tech Report 2025)</br>
+[6] **Escape with Your Self: Sound and Expressive Bidirectional Typing with Avoidance for Reachability Types** (PLDI 2026)</br>
 Songlin Jia, Guannan Wei, Siyuan He, Yuyan Bao, Tiark Rompf
-([pdf](https://arxiv.org/pdf/2404.08217.pdf)).
+([pdf](https://dl.acm.org/doi/10.1145/3808335)).
 
-[7] **When Lifetimes Liberate: A Type System for Arenas with Higher-Order Reachability Tracking** (Tech Report 2025)</br>
+[7] **When Lifetimes Liberate: A Type System for Arenas with Higher-Order Reachability Tracking** (OOPSLA 2026)</br>
 Siyuan He, Songlin Jia, Yuyan Bao, Tiark Rompf
-([pdf](https://arxiv.org/pdf/2509.04253))
+([pdf](https://dl.acm.org/doi/full/10.1145/3798254))
 
 [8] **Free to Move: Reachability Types with Flow-Sensitive Effects for Safe Deallocation and Ownership Transfer** (Tech Report 2025)</br>
 Haotian Deng, Siyuan He, Songlin Jia, Yuyan Bao, Tiark Rompf
 ([pdf](https://arxiv.org/pdf/2510.08939))
 
-[9] **Typestate via Revocable Capabilities**  (Tech Report 2025)</br>
+[9] **Typestate via Revocable Capabilities**  (PLDI 2026)</br>
 Songlin Jia, Craig Liu, Siyuan He, Haotian Deng, Yuyan Bao, Tiark Rompf
-([pdf](https://arxiv.org/pdf/2510.08889))
+([pdf](https://dl.acm.org/doi/full/10.1145/3808323))
 
-[10] **Type, Ability, and Effect Systems: Perspectives on Purity, Semantics, and Expressiveness** (Tech Report 2025)</br>
+[10] **Type, Ability, and Effect Systems: Perspectives on Purity, Semantics, and Expressiveness** (OOPSLA 2026)</br>
 Yuyan Bao, Tiark Rompf
-([pdf](https://arxiv.org/pdf/2510.07582))
+([pdf](https://dl.acm.org/doi/10.1145/3839518))
 
 
